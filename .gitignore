@@ -1,0 +1,32 @@
+# ============ 敏感配置（含 API Key） ============
+.env
+.env.local
+.env.*.local
+**/application-local.yaml
+**/application-local.yml
+**/application-local.properties
+
+# ============ IDE / 编辑器 ============
+.idea/
+.vscode/
+.cursor/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# ============ 构建产物 ============
+target/
+dist/
+dist-ssr/
+node_modules/
+*.class
+*.jar
+*.war
+*.log
+
+# ============ OS 文件 ============
+Thumbs.db
+Desktop.ini

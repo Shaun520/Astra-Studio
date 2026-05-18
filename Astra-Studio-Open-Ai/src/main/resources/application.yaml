@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: Astra-Studio-Open-Ai
+  profiles:
+    active: local
+server:
+  port: 8089
+  servlet:
+    context-path: /api
+# OpenAI-compatible HTTP API（阿里云 DashScope 兼容模式示例）。
+# 密钥不要写进仓库：通过环境变量 DASHSCOPE_API_KEY 提供，并激活 profile「llm」。
+# 本地示例：set DASHSCOPE_API_KEY=sk-xxx  且  --spring.profiles.active=llm
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model-name: deepseek-v4-flash
+      log-requests: true
+      log-responses: true
+      api-key: ${custom.api-keys.dashscope}
+      return-thinking: true
+      timeout: 30s
+      max-retries: 2
+      reasoning-effort: low
+    streaming-chat-model:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model-name: deepseek-v4-flash
+      api-key: ${custom.api-keys.dashscope}
+      return-thinking: false
+      timeout: 30s
+      max-retries: 2
+      log-requests: true
+      log-responses: true
+
+# 自动路由配置（基于任务类型的智能模型选择）
+auto-routing:
+  enabled: true
+  confidence-threshold: 0.4
+  default-model: glm-5
+  rules-file: classpath:intent-rules.yaml
+  rules-hot-reload: false
