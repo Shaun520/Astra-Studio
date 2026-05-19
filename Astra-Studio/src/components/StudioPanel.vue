@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Cpu, SlidersHorizontal, Sparkles, Layers, ChevronDown } from 'lucide-vue-next'
+import { Cpu, SlidersHorizontal, Sparkles, Layers, ChevronDown, BookOpen } from 'lucide-vue-next'
+import KnowledgeBasePanel from './KnowledgeBasePanel.vue'
 
+const activeTab = ref<'params' | 'knowledge'>('params')
 const temperature = ref(0.72)
 const maxOutput = ref(4096)
 const topP = ref(0.95)
@@ -19,7 +21,26 @@ const recentAssets = [
 
 <template>
   <aside class="studio bg-bg flex flex-col overflow-y-auto">
-    <div class="studio-section py-[18px] px-5 border-b border-border last:border-b-0">
+    <!-- Tabs Header -->
+    <div class="tabs-header flex border-b border-border">
+      <button 
+        @click="activeTab = 'params'"
+        class="flex-1 py-3 text-[11px] font-medium uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+        :class="activeTab === 'params' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-text-3 hover:text-text-2'"
+      >
+        <SlidersHorizontal class="w-3.5 h-3.5" /> 参数配置
+      </button>
+      <button 
+        @click="activeTab = 'knowledge'"
+        class="flex-1 py-3 text-[11px] font-medium uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+        :class="activeTab === 'knowledge' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-text-3 hover:text-text-2'"
+      >
+        <BookOpen class="w-3.5 h-3.5" /> 知识库管理
+      </button>
+    </div>
+
+    <div v-if="activeTab === 'params'" class="params-content">
+      <div class="studio-section py-[18px] px-5 border-b border-border last:border-b-0">
       <div class="studio-h text-[11px] text-text-3 uppercase tracking-[0.14em] mb-3 flex items-center gap-1.5 font-medium">
         <Cpu class="w-3 h-3" />当前模型
       </div>
@@ -105,6 +126,12 @@ const recentAssets = [
           </span>
         </div>
       </div>
+    </div>
+
+    </div>
+
+    <div v-else-if="activeTab === 'knowledge'" class="knowledge-content flex-1 p-5 overflow-hidden">
+      <KnowledgeBasePanel />
     </div>
   </aside>
 </template>

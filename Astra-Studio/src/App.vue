@@ -103,7 +103,7 @@ function getFileTypeLabel(file: File): string {
   return file.type.split('/')[1]?.toUpperCase() || 'FILE'
 }
 
-async function handleSend(text: string, attachments?: { id: number; file: File; preview: string | null; type: 'image' | 'file' }[], deepThink: boolean = false, webSearch: boolean = false, model?: string) {
+async function handleSend(text: string, attachments?: { id: number; file: File; preview: string | null; type: 'image' | 'file' }[], deepThink: boolean = false, webSearch: boolean = false, isKnowledgeBase: boolean = false, model?: string) {
   if (isLoading.value) return
   const finalModel = model || selectedModel.value
 
@@ -161,7 +161,7 @@ async function handleSend(text: string, attachments?: { id: number; file: File; 
     }
     
     sendChatMessage(
-      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, model: finalModel },
+      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, knowledgeBase: isKnowledgeBase, model: finalModel },
       {
         onThinking: (content) => {
           const msg = messages.value[assistantMsgIndex]
@@ -179,6 +179,12 @@ async function handleSend(text: string, attachments?: { id: number; file: File; 
             }
             msg.content = (msg.content || '') + content
             scrollToBottom()
+          }
+        },
+        onSources: (sources) => {
+          const msg = messages.value[assistantMsgIndex]
+          if (msg) {
+            msg.sources = sources
           }
         },
         onComplete: () => {
@@ -317,6 +323,7 @@ interface Message {
   content: string
   isLoading?: boolean
   thinkingContent?: string
+  sources?: any[]
   attachments?: Array<{
     type: 'image' | 'video' | 'audio' | 'code' | 'file'
     tag?: string
@@ -360,6 +367,7 @@ const messages = ref<Message[]>([])
               :think-time="msg.thinkTime"
               :content="msg.content"
               :thinking-content="msg.thinkingContent"
+              :sources="msg.sources"
               :attachments="msg.attachments"
               :is-loading="msg.isLoading"
             />

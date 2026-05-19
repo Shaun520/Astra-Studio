@@ -5,6 +5,7 @@ export interface ChatStreamCallbacks {
   onMessage: (content: string) => void
   onComplete: () => void
   onError: (error: Error) => void
+  onSources?: (sources: any[]) => void
 }
 
 export interface SendChatMessageOptions {
@@ -13,6 +14,7 @@ export interface SendChatMessageOptions {
   files?: string[]
   deepThink?: boolean
   webSearch?: boolean
+  knowledgeBase?: boolean
   model?: string
 }
 
@@ -44,6 +46,10 @@ async function parseSSELine(line: string, callbacks?: Partial<ChatStreamCallback
         callbacks?.onError?.(new Error(parsed.error))
         return true
       }
+      if (parsed.type === 'sources' && parsed.sources) {
+        callbacks?.onSources?.(parsed.sources)
+        return true
+      }
     } catch {
       if (data) callbacks?.onMessage?.(data)
     }
@@ -67,6 +73,9 @@ export async function sendChatMessage(
   }
   if (options.webSearch) {
     formData.append('webSearch', 'true')
+  }
+  if (options.knowledgeBase) {
+    formData.append('knowledgeBase', 'true')
   }
   formData.append('model', options.model || 'auto')
 
@@ -104,4 +113,57 @@ export async function sendChatMessage(
     if ((error as Error).name === 'AbortError') return
     callbacks?.onError?.(error as Error)
   }
+}
+
+export interface KnowledgeDocument {
+  id: number
+  filename: string
+  fileType: string
+  fileUrl: string
+  fileSize: number
+  chunkCount: number
+  status: 'PROCESSING' | 'READY' | 'FAILED'
+  errorMessage?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Page<T> {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  size: number
+  number: number
+}
+
+export async function getKnowledgeDocuments(page = 0, size = 10): Promise<Page<KnowledgeDocument>> {
+  const response = await fetch(`${API_BASE_URL}/ai/knowledge/documents?page=${page}&size=${size}`)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function getKnowledgeDocumentStatus(id: number): Promise<Partial<KnowledgeDocument>> {
+  const response = await fetch(`${API_BASE_URL}/ai/knowledge/documents/${id}`)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function deleteKnowledgeDocument(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/ai/knowledge/documents/${id}`, {
+    method: 'DELETE'
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+}
+
+export async function importKnowledgeDocument(fileUrl: string, fileName?: string): Promise<{ documentId: number, status: string }> {
+  const formData = new FormData()
+  formData.append('fileUrl', fileUrl)
+  if (fileName) formData.append('fileName', fileName)
+
+  const response = await fetch(`${API_BASE_URL}/ai/knowledge/import`, {
+    method: 'POST',
+    body: formData
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AttachCard from './AttachCard.vue'
+import { Library } from 'lucide-vue-next'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -53,6 +54,13 @@ interface Props {
     fileName?: string
     fileSize?: string
     fileType?: string
+  }>
+  sources?: Array<{
+    chunk_id: number | null
+    content_snippet: string
+    document_name: string
+    page_number: number | null
+    score: number
   }>
 }
 
@@ -759,6 +767,23 @@ async function handleCopyClick(e: Event) {
           <div v-html="renderedContent"></div>
           <span v-if="isLoading" class="cursor inline-block w-[2px] h-[1em] bg-accent ml-[2px] align-middle"></span>
         </div>
+        <!-- <div v-if="sources && sources.length > 0 && role === 'assistant'" class="sources-area mt-3 px-4 py-3 rounded-xl border border-accent/20 bg-accent/5">
+          <div class="sources-header flex items-center gap-1.5 mb-2 text-[12px] font-medium text-accent">
+            <Library class="w-[14px] h-[14px]" />
+            <span>知识库参考 ({{ sources.length }})</span>
+          </div>
+          <div class="sources-list flex flex-col gap-2">
+            <div v-for="(src, idx) in sources.slice(0, 3)" :key="idx"
+              class="source-card rounded-lg border border-border/50 bg-bg-1/60 px-3 py-2 text-[12px] leading-relaxed">
+              <div class="source-meta flex items-center gap-2 mb-1">
+                <span class="source-doc font-medium text-text">{{ src.document_name || '未知文档' }}</span>
+                <span v-if="src.page_number" class="source-page text-text-4">P{{ src.page_number }}</span>
+                <span v-if="src.score" class="source-score ml-auto text-accent/70 tabular-nums font-mono">{{ (src.score * 100).toFixed(0) }}%</span>
+              </div>
+              <p class="source-snippet text-text-3 line-clamp-2">{{ src.content_snippet }}</p>
+            </div>
+          </div>
+        </div> -->
       </div>
       <AttachCard
         v-for="(att, i) in attachments"
@@ -781,6 +806,15 @@ async function handleCopyClick(e: Event) {
 
 <style scoped>
 .msg { display: flex; align-items: flex-start; gap: 10px; padding: 2px 0; }
+
+.sources-area { animation: source-fade-in 0.3s ease-out; }
+@keyframes source-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.source-card { transition: border-color 0.15s ease, background-color 0.15s ease; }
+.source-card:hover { border-color: var(--color-accent-line); background-color: var(--color-bg-hover); }
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 .bubble-loading .bubble { animation: bubble-float 1.4s ease-in-out infinite; }
 .bubble-loading .bubble-1 { animation-delay: 0ms; }

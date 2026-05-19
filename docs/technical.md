@@ -492,6 +492,114 @@ if (webSearch) {
 
 模型通过函数调用触发搜索，结果自动注入上下文，对前端透明。
 
+### 3.8 对话持久化
+
+对话持久化模块实现会话历史的多级存储与恢复能力，确保用户刷新页面或服务重启后可恢复上下文。
+
+#### 架构
+
+```
+用户发送消息
+       ↓
+ConversationPersistenceService.saveContext()
+       ↓
+  ┌─ Level 1: Redis（热缓存）── Kryo 序列化 ── TTL=2h
+  │         ↓ miss
+  │    Level 2: PostgreSQL（冷存储）── conversation_snapshots 表
+  │
+恢复流程：restoreOrCreate(memoryId)
+       ↓
+  L1 Redis hit → 反序列化 → ConversationContext ✅
+       ↓ miss
+  L2 PostgreSQL hit → 加载快照 + 消息详情 → ConversationContext ✅
+       ↓ miss
+  空 ConversationContext（新会话）→ 返回 recovered=false
+```
+
+#### 核心类
+
+| 类 | 职责 |
+|----|------|
+| `ConversationPersistenceService` | 双写协调器：saveContext / loadContext / restoreOrCreate |
+| `ConversationCacheService` | Redis 操作层：序列化/反序列化/TTL管理 |
+| `ConversationQueryService` | 查询层：提供 REST 接口查询会话状态 |
+| `KryoSerializer` | Kryo 序列化工具（带 checksum 校验） |
+| `ConversationContext` | 会话上下文 POJO（messages, version, modelName） |
+
+#### 关键代码
+
+```java
+public void saveContext(String memoryId, List<MessageEntry> messages) {
+    ConversationContext ctx = new ConversationContext(memoryId, messages, modelName);
+    byte[] serialized = kryoSerializer.serialize(ctx);
+    cacheService.saveToRedis(memoryId, serialized);      // L1 热缓存
+    snapshotRepo.saveToPostgres(memoryId, ctx);           // L2 冷存储
+}
+```
+
+### 3.9 知识库 RAG
+
+知识库 RAG（Retrieval-Augmented Generation）系统实现文档导入、向量化存储和语义检索增强生成。
+
+#### ETL 管道
+
+```
+文档上传 (URL)
+       ↓
+DocumentETLPipeline.processDocument()
+       ↓
+  1. 文档解析（PDF/Word/TXT/Markdown）
+  2. 分块（chunk_size=512, overlap=64）
+  3. 向量化（EmbeddingModel embed）
+  4. 入库（document_chunks 表，pgvector 存储）
+```
+
+#### 检索流程
+
+```
+用户提问 + knowledgeBase=true
+       ↓
+RAGRetrievalService.retrieve(query)
+       ↓
+  EmbeddingModel.embed(query) → query vector
+       ↓
+  DocumentChunkRepository.findSimilarChunks(vector, topK=5)
+       ↓
+  过滤 similarityThreshold ≥ 0.75 → RetrievedChunk[]
+       ↓
+  ContentRetriever.retrieve() → 注入 AiServices 上下文
+```
+
+#### Retriever 集成方式
+
+通过 `ContentRetrieverConfig` 将 `RAGRetrievalService` 包装为 LangChain4j `ContentRetriever` Bean：
+
+```java
+@Bean
+public ContentRetriever ragContentRetriever() {
+    return query -> ragRetrievalService.retrieve(query.text())
+        .stream().map(RetrievedChunk::toTextContent).toList();
+}
+```
+
+在 `AiCodeHelperServiceFactory` 中按需挂载：
+
+```java
+if (knowledgeBase && ragContentRetriever != null) {
+    builder.contentRetriever(ragContentRetriever);
+}
+```
+
+#### 核心类
+
+| 类 | 职责 |
+|----|------|
+| `DocumentETLPipeline` | 文档 ETL 管道（解析→分块→向量→入库） |
+| `RAGRetrievalService` | 语义检索服务（embedding + pgvector 相似度搜索） |
+| `KnowledgeService` | 知识库 REST 服务层（上传/搜索/列表） |
+| `ContentRetrieverConfig` | LangChain4j ContentRetriever Bean 配置 |
+| `EmbeddingConfig` | EmbeddingModel 配置 |
+
 ---
 
 ## 4 前后端交互协议
@@ -556,11 +664,38 @@ data: {"error":"Sensitive word detected: kill"}
 | `files` | string（多值） | 否 | 文件的 OSS 公开访问 URL，可传多个 |
 | `deepThink` | boolean | 否 | 默认 `false` |
 | `webSearch` | boolean | 否 | 默认 `false` |
+| `knowledgeBase` | boolean | 否 | 默认 `false`；启用知识库 RAG 检索 |
 | `model` | string | 否 | 默认 `glm-5`；传 `auto` 启用自动路由 |
 
 响应：SSE 流，格式见 [4.1](#41-sse-数据格式)。
 
+新增 SSE 事件类型：
+
+```
+event: message
+data: {"type":"sources","sources":[{"chunk_id":1,"content_snippet":"...","document_name":"doc.pdf","page_number":1,"score":0.92}]}
+```
+
 当前允许的模型值：`glm-5`、`deepseek-v4-flash`、`qwen3.6-flash-2026-04-16`、`auto`。
+
+#### GET /api/ai/conversations/{memoryId}/restore
+
+恢复或创建会话上下文。返回 JSON：`{ memoryId, messages, version, recovered }`。
+
+#### POST /api/ai/knowledge/import
+
+导入文档到知识库（multipart/form-data）。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `fileUrl` | string | 是 | 文件 URL |
+| `fileName` | string | 否 | 文件名 |
+
+返回：`{ documentId, status: "PROCESSING" }`。
+
+#### GET /api/ai/knowledge/documents
+
+查询知识库文档列表和状态，返回 JSON 数组。
 
 #### GET /api/ai/routing-stats
 
@@ -606,6 +741,39 @@ auto-routing:
   confidence-threshold: 0.6   # 低于此值使用 default-model
   default-model: glm-5
   rules-file: classpath:intent-rules.yaml
+
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ""
+      database: 0
+  datasource:
+    url: jdbc:postgresql://localhost:5432/astra_studio
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  sql:
+    init:
+      mode: always
+
+conversation-persistence:
+  redis-ttl-hours: 2
+  kryo-checksum-enabled: true
+
+knowledge-base:
+  rag:
+    top-k: 5
+    similarity-threshold: 0.75
+    retrieval-timeout-ms: 3000
+  etl:
+    chunk-size: 512
+    chunk-overlap: 64
 ```
 
 **application-local.yaml**（本地密钥，不提交）

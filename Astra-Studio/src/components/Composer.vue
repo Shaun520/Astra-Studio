@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, reactive, inject, type Ref } from 'vue'
-import { Paperclip, Image, Mic, Globe, ArrowUp, X, FileText, Loader2, Square, Brain } from 'lucide-vue-next'
+import { Paperclip, Image, Mic, Globe, ArrowUp, X, FileText, Loader2, Square, Brain, Library } from 'lucide-vue-next'
 
 const openImagePreview = inject<(images: { src: string; alt?: string }[], index?: number) => void>('openImagePreview')!
 const selectedModel = inject<Ref<string>>('selectedModel')!
@@ -8,6 +8,7 @@ const selectedModel = inject<Ref<string>>('selectedModel')!
 const inputText = ref('')
 const deepThink = ref(false)
 const webSearch = ref(false)
+const knowledgeBase = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
@@ -24,7 +25,7 @@ const pendingAttachments = ref<PendingAttachment[]>([])
 let attachmentIdCounter = 0
 
 const emit = defineEmits<{
-  (e: 'send', text: string, attachments: PendingAttachment[], isDeepThink: boolean, isWebSearch: boolean, model?: string): void
+  (e: 'send', text: string, attachments: PendingAttachment[], isDeepThink: boolean, isWebSearch: boolean, isKnowledgeBase: boolean, model?: string): void
   (e: 'stop'): void
   (e: 'update:deepThink', value: boolean): void
   (e: 'update:webSearch', value: boolean): void
@@ -155,7 +156,7 @@ function previewImage(att: PendingAttachment) {
 function handleSend() {
   const text = inputText.value.trim()
   if (!text && pendingAttachments.value.length === 0) return
-  emit('send', text, [...pendingAttachments.value], deepThink.value, webSearch.value, selectedModel?.value || 'auto')
+  emit('send', text, [...pendingAttachments.value], deepThink.value, webSearch.value, knowledgeBase.value, selectedModel?.value || 'auto')
   inputText.value = ''
   pendingAttachments.value = []
   nextTick(() => {
@@ -293,6 +294,16 @@ function handlePaste(e: ClipboardEvent) {
         >
           <Globe class="w-[15px] h-[15px]" />
           <span>联网</span>
+        </button>
+        <button
+          class="tool-chip inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-text-3 text-[12px] cursor-pointer transition-colors duration-150 hover:bg-bg-hover hover:text-text bg-transparent border-0 font-sans disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="{ active: knowledgeBase }"
+          :disabled="props.disabled"
+          @click="knowledgeBase = !knowledgeBase"
+          title="知识库检索"
+        >
+          <Library class="w-[15px] h-[15px]" />
+          <span>知识库</span>
         </button>
         <button class="tool-chip inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-text-3 text-[12px] cursor-pointer transition-colors duration-150 hover:bg-bg-hover hover:text-text bg-transparent border-0 font-sans disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled"

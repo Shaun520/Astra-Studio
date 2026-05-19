@@ -64,3 +64,11 @@ export interface ThemeConfig {
   accent: 'amber' | 'sage' | 'rose'
   density: 'loose' | 'default' | 'tight'
 }
+
+export interface KnowledgeSource {
+  chunk_id: number | null
+  content_snippet: string
+  document_name: string
+  page_number: number | null
+  score: number
+}

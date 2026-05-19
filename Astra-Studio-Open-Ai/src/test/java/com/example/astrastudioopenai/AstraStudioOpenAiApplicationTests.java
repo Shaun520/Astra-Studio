@@ -1,6 +1,7 @@
 package com.example.astrastudioopenai;
 
-import com.example.astrastudioopenai.ai.AiCodeHelperService;
+
+import com.example.astrastudioopenai.service.ai.AiCodeHelperService;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.TextContent;
