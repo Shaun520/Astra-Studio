@@ -13,6 +13,11 @@ Astra Studio 是一个前后端分离的 AI 创作工作台。前端负责交互
 - 支持 SSE 流式响应，前端可分段接收 thinking 与 text 内容。
 - 支持图片、文档等文件上传到 OSS，再把文件 URL 作为上下文传给后端。
 - 支持自动模型路由，根据用户输入意图选择更合适的模型。
+- **支持知识库（RAG）**：可上传 PDF/DOCX/TXT 文档，AI 回答时自动检索相关知识库内容并引用回答。
+  - 前端提供知识库管理面板（上传、列表、删除、状态轮询）。
+  - 后端基于 PostgreSQL + Pgvector 实现向量存储与相似度搜索。
+  - 使用 DashScope `text-embedding-v3` 模型生成 1024 维嵌入向量。
+  - SSE 流式推送中新增 `sources` 事件，展示参考文档来源。
 - 后端已有服务缓存和路由规则文件，便于后续继续扩展模型、工具和功能开关。
 
 ## 二、项目结构
@@ -33,15 +38,21 @@ Astra Studio 是一个前后端分离的 AI 创作工作台。前端负责交互
 ├── Astra-Studio-Open-Ai/          # 后端
 │   ├── src/main/java/com/example/astrastudioopenai/
 │   │   ├── ai/                   # LangChain4j 服务、模型工厂、MCP 配置
-│   │   ├── config/               # Web、跨域等基础配置
-│   │   ├── controller/           # HTTP 接口
-│   │   ├── dto/                  # 接口返回结构
+│   │   ├── config/               # Web、跨域等基础配置（含 ContentRetriever）
+│   │   ├── controller/           # HTTP 接口（含知识库管理接口）
+│   │   ├── dto/                  # 接口返回结构（含 RetrievedChunk）
+│   │   ├── entity/               # 数据实体（KnowledgeDocument, DocumentChunk）
+│   │   ├── repository/           # 数据访问层（含向量检索 SQL）
 │   │   ├── routing/              # 意图识别与模型路由
+│   │   ├── service/
+│   │   │   ├── chat/             # 聊天服务（含 RAG 集成）
+│   │   │   └── knowledge/        # 知识库服务（ETL、检索、管理）
 │   │   └── utils/                # 消息构建等工具
 │   ├── src/main/resources/
-│   │   ├── application.yaml
+│   │   ├── application.yaml      # 主配置（含 RAG 参数）
 │   │   ├── application-local.yaml
-│   │   └── intent-rules.yaml
+│   │   ├── intent-rules.yaml     # 意图路由规则
+│   │   └── db/migration/         # Flyway 数据库迁移脚本
 │   ├── pom.xml
 │   └── mvnw.cmd
 │
@@ -134,12 +145,14 @@ Accept: text/event-stream
 - `files`：文件 URL 列表，可传多个。
 - `deepThink`：是否启用深度思考。
 - `webSearch`：是否启用联网搜索。
+- **`knowledgeBase`**：是否启用知识库检索（默认 false）。
 - `model`：模型名称，支持 `auto` 自动路由。
 
 返回内容通过 SSE 推送。当前主要事件数据类型包括：
 
 - `thinking`：模型思考过程。
 - `text`：最终回答正文。
+- **`sources`**：知识库参考来源（knowledgeBase=true 时返回）。
 - `routing_info`：自动路由结果。
 - `done`：本次响应结束。
 - `error`：异常信息。
@@ -151,6 +164,31 @@ GET /api/ai/routing-stats
 ```
 
 用于查看自动模型路由的统计信息。
+
+### 4.3 知识库管理接口
+
+```text
+# 上传文档（同步 ETL）
+POST /api/ai/knowledge/upload
+Body: { fileUrl, fileName }
+Response: { documentId, status, chunkCount }
+
+# 文档列表（分页）
+GET /api/ai/knowledge/documents?page=0&size=10
+Response: { content, totalElements, totalPages, ... }
+
+# 单文档状态查询
+GET /api/ai/knowledge/documents/{id}
+Response: { status, chunkCount, errorMessage }
+
+# 删除文档（级联删除 chunks）
+DELETE /api/ai/knowledge/documents/{id}
+Response: 204 No Content
+
+# 手动搜索测试
+POST /api/ai/knowledge/search?query=xxx
+Response: List<RetrievedChunk>
+```
 
 ## 五、配置说明
 
@@ -173,7 +211,31 @@ auto-routing:
 
 `intent-rules.yaml` 管理意图分类规则。新增路由场景时，优先在这里补充关键词、正则和目标模型，避免把规则散落在业务代码里。
 
-### 5.2 前端配置
+### 5.2 知识库 RAG 配置
+
+知识库功能在 `application.yaml` 中通过 `knowledge-base` 节点配置：
+
+```yaml
+knowledge-base:
+  rag:
+    enabled: true                    # 是否启用 RAG 功能
+    embedding-model: text-embedding-v3   # DashScope 嵌入模型
+    embedding-dimensions: 1024       # 向量维度（DashScope v3 仅支持此值）
+    chunk-size: 512                  # 文本分块大小（tokens）
+    chunk-overlap: 64                # 分块重叠（tokens）
+    batch-size: 10                   # 嵌入 API 批次限制
+    top-k: 5                         # 返回最相关的 K 条结果
+    similarity-threshold: 0.5        # 余弦相似度阈值（距离 <= 0.5）
+    retrieval-timeout-ms: 3000       # 检索超时时间
+    cache-ttl-seconds: 30            # 检索结果缓存 TTL
+
+sse:
+  timeout-ms: 300000                 # SSE 超时（含 RAG 溯源推送）
+```
+
+**数据库要求**：PostgreSQL + Pgvector 扩展，需执行 Flyway 迁移脚本创建 `knowledge_documents` 和 `document_chunks` 表。
+
+### 5.3 前端配置
 
 前端 API 地址当前在 `src/services/api.ts` 中维护：
 

@@ -27,6 +27,9 @@ node_modules/
 *.war
 *.log
 
+# ============ 临时文档 ============
+docs/code-review/
+
 # ============ OS 文件 ============
 Thumbs.db
 Desktop.ini

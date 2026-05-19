@@ -11,6 +11,12 @@ custom:
 # 如需覆盖其他配置可在此添加，例如：
 # spring:
 #   datasource:
-#     url: jdbc:mysql://localhost:3306/astra
-#     username: root
+#     url: jdbc:postgresql://localhost:5432/astra
+#     username: postgres
 #     password: your_password
+#
+# knowledge-base:
+#   rag:
+#     enabled: true
+#     similarity-threshold: 0.5
+#     top-k: 5

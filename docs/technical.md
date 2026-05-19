@@ -23,6 +23,8 @@
    - 3.5 [输入护轨](#35-输入护轨)
    - 3.6 [SSE 流式实现](#36-sse-流式实现)
    - 3.7 [MCP 联网搜索](#37-mcp-联网搜索)
+   - 3.8 [对话持久化](#38-对话持久化)
+   - 3.9 [知识库 RAG](#39-知识库-rag)
 4. [前后端交互协议](#4-前后端交互协议)
    - 4.1 [SSE 数据格式](#41-sse-数据格式)
    - 4.2 [接口列表](#42-接口列表)
@@ -63,6 +65,10 @@
 │  AutoRoutingService  LangChain4j        │
 │  IntentClassifier    TokenStream        │
 │  ModelRouter         McpToolProvider    │
+│                      ContentRetriever   │ ← RAG 知识库检索
+│  KnowledgeService ← DocumentETLPipeline │ ← 文档管理 + ETL
+│       ↓                 ↓               │
+│  RAGRetrievalService → PostgreSQL       │ ← 向量搜索
 │                                         │
 └─────────┬───────────────────────────────┘
           │  OpenAI-compatible HTTP API
@@ -678,6 +684,42 @@ data: {"type":"sources","sources":[{"chunk_id":1,"content_snippet":"...","docume
 
 当前允许的模型值：`glm-5`、`deepseek-v4-flash`、`qwen3.6-flash-2026-04-16`、`auto`。
 
+#### POST /api/ai/knowledge/upload
+
+上传文档到知识库（同步 ETL 处理）。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `fileUrl` | string | 是 | 文件 OSS URL |
+| `fileName` | string | 是 | 原始文件名 |
+
+返回：`{ documentId, status, chunkCount }`。
+
+支持格式：PDF、DOCX、TXT。ETL 完成后 status 变为 `READY`。
+
+#### GET /api/ai/knowledge/documents
+
+分页查询知识库文档列表。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page` | int | 页码（从 0 开始） |
+| `size` | int | 每页大小 |
+
+返回：`{ content: [], totalElements, totalPages, ... }`，按创建时间倒序。
+
+#### GET /api/ai/knowledge/documents/{id}
+
+查询单个文档详细状态。返回：`{ id, filename, status, chunkCount, errorMessage, createdAt }`。
+
+#### DELETE /api/ai/knowledge/documents/{id}
+
+删除文档及其所有分块向量数据（数据库外键级联删除）。返回：`204 No Content`。
+
+#### POST /api/ai/knowledge/search?query=xxx
+
+手动搜索知识库（测试用）。返回：`List<RetrievedChunk>`，包含 chunk 内容和来源文档名。
+
 #### GET /api/ai/conversations/{memoryId}/restore
 
 恢复或创建会话上下文。返回 JSON：`{ memoryId, messages, version, recovered }`。
@@ -768,12 +810,19 @@ conversation-persistence:
 
 knowledge-base:
   rag:
-    top-k: 5
-    similarity-threshold: 0.75
-    retrieval-timeout-ms: 3000
-  etl:
+    enabled: true
+    embedding-model: text-embedding-v3
+    embedding-dimensions: 1024
     chunk-size: 512
     chunk-overlap: 64
+    batch-size: 10
+    top-k: 5
+    similarity-threshold: 0.5
+    retrieval-timeout-ms: 3000
+    cache-ttl-seconds: 30
+
+sse:
+  timeout-ms: 300000
 ```
 
 **application-local.yaml**（本地密钥，不提交）
@@ -944,5 +993,144 @@ private static final Set<String> sensitiveWords = Set.of("kill", "evil", "newwor
 // 或者引入词库文件
 private Set<String> sensitiveWords = loadWordsFromResource("sensitive-words.txt");
 ```
+
+---
+
+## 3.9 知识库 RAG
+
+知识库模块实现文档检索增强生成（RAG）能力，允许用户上传 PDF/DOCX/TXT 文档后，AI 在回答时自动检索相关知识库内容并引用回答。
+
+### 3.9.1 架构概览
+
+```
+用户上传文档 → ETL Pipeline（解析/分块/向量化）→ PostgreSQL + Pgvector
+                                                              ↓
+用户提问（开启知识库）→ Embedding 查询 → 向量相似度搜索 → Top-K chunks
+                                                              ↓
+                                              Chunks 注入 LLM 上下文 → 带引用的回答 + Sources 推送
+```
+
+### 3.9.2 核心组件
+
+| 组件 | 类名 | 职责 |
+|------|------|------|
+| ETL 管道 | `DocumentETLPipeline` | 文件解析→文本分块→向量化→存储 |
+| 向量检索 | `RAGRetrievalService` | 查询向量化、Pgvector 相似度搜索、结果过滤与缓存 |
+| 内容检索器 | `ContentRetrieverConfig` | LangChain4j 集成，将检索结果注入 AI 上下文 |
+| 知识库服务 | `KnowledgeService` | 文档 CRUD 管理（上传/列表/删除/状态查询） |
+| 数据实体 | `KnowledgeDocumentEntity` / `DocumentChunkEntity` | JPA 实体映射 |
+
+### 3.9.3 ETL 流程
+
+**同步执行**（非异步），确保嵌入完成后才标记 READY：
+
+```
+POST /knowledge/upload {fileUrl, fileName}
+    ↓
+创建 KnowledgeDocumentEntity (status=PROCESSING)
+    ↓
+parser.parseToText(fileUrl)          // 解析 PDF/DOCX/TXT 为纯文本
+    ↓
+chunker.chunk(text, fileName)        // 按 512 tokens 分块，重叠 64 tokens
+    ↓
+embedAndStore(doc, chunks):          // 同步嵌入+存储
+    for each batch of 10:            // DashScope API 批次限制
+      embeddings = model.embedAll(texts)  // text-embedding-v3, 1024 维
+      saveChunk(doc, chunk, vector)   // 写入 DB（失败抛异常，不存 NULL）
+    ↓
+更新 status=READY, chunkCount=N
+```
+
+**关键参数**：
+- 分块大小：`chunk-size=512` tokens，重叠 `chunk-overlap=64` tokens
+- 批次大小：`batch-size=10`（DashScope API 限制）
+- 向量维度：`embedding-dimensions=1024`（text-embedding-v3 固定值）
+
+### 3.9.4 向量检索流程
+
+```java
+retrieve(query):
+  1. 缓存检查（TTL=30s，同一查询复用结果）
+  2. queryEmbedding = embed(query)            // 1024 维向量
+  3. rawResults = findSimilarChunks(
+       queryVec, maxDist=0.5, topK=10)        // 余弦距离 <= 0.5
+  4. if empty:
+       fallback = findSimilarChunks(..., maxDist=1.0)  // 无阈值重试
+  5. map to RetrievedChunk (id, content, documentName)
+  6. return results
+```
+
+**Fallback 机制**：阈值过滤无结果时，用 `maxDist=1.0` 重试一次。
+
+### 3.9.5 数据库设计
+
+**knowledge_documents** — 文档元数据：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT PK | 自增主键 |
+| filename | VARCHAR(255) | 原始文件名 |
+| file_type | VARCHAR(20) | pdf/docx/txt |
+| file_url | TEXT | OSS 地址 |
+| status | VARCHAR(20) | PROCESSING/READY/FAILED |
+| chunk_count | INTEGER | 分块数量 |
+| error_message | TEXT | 失败原因 |
+
+**document_chunks** — 文档分块（含向量）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT PK | 自增主键 |
+| document_id | BIGINT FK | 关联文档（级联删除） |
+| chunk_index | INTEGER | 分块序号 |
+| content | TEXT | 分块文本 |
+| **embedding** | **vector(1024)** | **浮点向量（Hibernate Vector 映射）** |
+| token_count | INTEGER | Token 数量 |
+
+**向量列映射**：
+```java
+@JdbcTypeCode(SqlTypes.VECTOR)
+@Array(length = 1024)
+@Column(name = "embedding", columnDefinition = "vector(1024)")
+private float[] embedding;
+```
+
+### 3.9.6 SSE 事件扩展
+
+知识库问答时，SSE 流新增 `sources` 事件：
+
+```json
+{
+  "type": "sources",
+  "sources": [
+    {
+      "chunkId": 5,
+      "contentSnippet": "...",
+      "documentName": "xxx.pdf"
+    }
+  ]
+}
+```
+
+前端 `ChatMessage.vue` 在收到此事件时展示来源卡片。
+
+### 3.9.7 配置参考
+
+```yaml
+knowledge-base:
+  rag:
+    enabled: true
+    embedding-model: text-embedding-v3
+    embedding-dimensions: 1024
+    chunk-size: 512
+    chunk-overlap: 64
+    batch-size: 10
+    top-k: 5
+    similarity-threshold: 0.5
+    retrieval-timeout-ms: 3000
+    cache-ttl-seconds: 30
+```
+
+> 详细技术文档见 [rag-knowledge-base.md](./develop/rag-knowledge-base.md)。
 
 如需基于模型的内容审核，可新增一个 `InputGuardrail` 实现，并在 `AiCodeHelperService` 的 `@InputGuardrails` 注解中追加。
