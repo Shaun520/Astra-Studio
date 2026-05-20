@@ -30,7 +30,7 @@ public class RAGRetrievalService {
     @Value("${knowledge-base.rag.top-k:5}")
     private int topK;
 
-    @Value("${knowledge-base.rag.similarity-threshold:0.75}")
+    @Value("${knowledge-base.rag.similarity-threshold:0.5}")
     private double similarityThreshold;
 
     @Value("${knowledge-base.rag.retrieval-timeout-ms:3000}")
@@ -81,16 +81,19 @@ public class RAGRetrievalService {
                 vec.length > 0 ? String.format("%.6f", vec[0]) : "N/A",
                 vec.length > 1 ? String.format("%.6f", vec[1]) : "N/A");
 
-        long totalChunks = chunkRepo.count();
-        long nullCount = chunkRepo.countNullEmbeddings();
-        long nonNullCount = chunkRepo.countNonNullEmbeddings();
-        log.info("RAG db_stats: total={}, non_null_embeddings={}, null_embeddings={}",
-                totalChunks, nonNullCount, nullCount);
+        if (log.isDebugEnabled()) {
+            long totalChunks = chunkRepo.count();
+            long nullCount = chunkRepo.countNullEmbeddings();
+            long nonNullCount = chunkRepo.countNonNullEmbeddings();
+            log.debug("RAG db_stats: total={}, non_null_embeddings={}, null_embeddings={}",
+                    totalChunks, nonNullCount, nullCount);
 
-        if (nonNullCount == 0 && totalChunks > 0) {
-            log.error("RAG CRITICAL: All {} embeddings are NULL! Documents need re-upload after fixing ETL pipeline.",
-                    totalChunks);
-            return List.of();
+            if (nonNullCount == 0 && totalChunks > 0) {
+                log.error(
+                        "RAG CRITICAL: All {} embeddings are NULL! Documents need re-upload after fixing ETL pipeline.",
+                        totalChunks);
+                return List.of();
+            }
         }
 
         double maxDist = 1.0 - similarityThreshold;

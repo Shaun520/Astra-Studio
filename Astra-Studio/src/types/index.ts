@@ -17,6 +17,9 @@ export interface Message {
   time: string
   thinkTime?: string
   content: string
+  isLoading?: boolean
+  thinkingContent?: string
+  sources?: KnowledgeSource[]
   attachments?: Attachment[]
 }
 
@@ -27,7 +30,7 @@ export interface Attachment {
   subtitle?: string
   meta?: string
   codeContent?: string
-  src?: string
+  src?: string | null
   fileName?: string
   fileSize?: string
   fileType?: string

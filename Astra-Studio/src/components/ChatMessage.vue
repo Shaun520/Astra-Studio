@@ -2,38 +2,9 @@
 import AttachCard from './AttachCard.vue'
 import { Library } from 'lucide-vue-next'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
-import hljs from 'highlight.js/lib/core'
-import javascript from 'highlight.js/lib/languages/javascript'
-import typescript from 'highlight.js/lib/languages/typescript'
-import python from 'highlight.js/lib/languages/python'
-import cpp from 'highlight.js/lib/languages/cpp'
-import c from 'highlight.js/lib/languages/c'
-import java from 'highlight.js/lib/languages/java'
-import css from 'highlight.js/lib/languages/css'
-import xml from 'highlight.js/lib/languages/xml'
-import json from 'highlight.js/lib/languages/json'
-import bash from 'highlight.js/lib/languages/bash'
-import sql from 'highlight.js/lib/languages/sql'
-import yaml from 'highlight.js/lib/languages/yaml'
-import markdown from 'highlight.js/lib/languages/markdown'
+import { debug, error } from '../utils/logger'
+import { mdToHtml, renderThinkingMarkdown } from '../utils/markdown'
 import 'highlight.js/styles/vs2015.css'
-
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('cpp', cpp)
-hljs.registerLanguage('c', c)
-hljs.registerLanguage('java', java)
-hljs.registerLanguage('css', css)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('shell', bash)
-hljs.registerLanguage('sql', sql)
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('yml', yaml)
-hljs.registerLanguage('markdown', markdown)
 
 interface Props {
   role: 'user' | 'assistant'
@@ -96,394 +67,6 @@ function normalizeContent(text: string): string {
     .replace(/[ \t]+$/gm, '')
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
-function highlightCode(code: string, language?: string): string {
-  if (!language || !hljs.getLanguage(language)) {
-    return hljs.highlightAuto(code).value
-  }
-  try {
-    return hljs.highlight(code, { language }).value
-  } catch {
-    return hljs.highlightAuto(code).value
-  }
-}
-
-function renderCodeBlocks(s: string): string {
-  console.log('[renderCodeBlocks] Input length:', s.length)
-  const codeBlockRegex = /```(\w*)\s*\n([\s\S]*?)```/g
-  const incompleteCodeBlockRegex = /```(\w*)\s*\n([\s\S]*)$/  // 匹配不完整的代码块
-  let match
-  let result = ''
-  let lastIndex = 0
-  let codeBlockCount = 0
-
-  while ((match = codeBlockRegex.exec(s)) !== null) {
-    codeBlockCount++
-    const before = s.substring(lastIndex, match.index)
-    result += escapeHtml(before)
-
-    const language = match[1] || ''
-    const code = match[2].replace(/^[\n]|[\n]$/g, '')
-    console.log('[renderCodeBlocks] Found complete code block #' + codeBlockCount + ', language:', language, ', code length:', code.length)
-    const highlighted = highlightCode(code, language)
-    const label = language ? `<span class="code-block-lang">${language}</span>` : ''
-    const escapedCode = escapeHtml(code).replace(/`/g, '&#96;')
-    result += `<div class="code-block-wrapper" data-code="${escapedCode}"><div class="code-block-header"><span class="code-block-lang">${language}</span><button class="code-copy-btn" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="copy-text">复制</span></button></div><pre class="code-block-pre"><code class="hljs">${highlighted}</code></pre></div>`
-
-    lastIndex = match.index + match[0].length
-  }
-
-  // 检查是否有不完整的代码块（流式传输中）
-  const remainingText = s.substring(lastIndex)
-  const incompleteMatch = incompleteCodeBlockRegex.exec(remainingText)
-
-  if (incompleteMatch) {
-    codeBlockCount++
-    const beforeIncomplete = remainingText.substring(0, incompleteMatch.index)
-    result += escapeHtml(beforeIncomplete)
-
-    const language = incompleteMatch[1] || ''
-    const code = incompleteMatch[2]
-    console.log('[renderCodeBlocks] Found INCOMPLETE code block #' + codeBlockCount + ', language:', language, ', code length:', code.length)
-    const highlighted = highlightCode(code, language)
-    const label = language ? `<span class="code-block-lang">${language}</span>` : ''
-    const escapedCode = escapeHtml(code).replace(/`/g, '&#96;')
-    result += `<div class="code-block-wrapper" data-code="${escapedCode}"><div class="code-block-header"><span class="code-block-lang">${language}</span><button class="code-copy-btn" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"></polyline></svg><span class="copy-text">复制</span></button></div><pre class="code-block-pre"><code class="hljs">${highlighted}</code></pre></div>`
-  } else {
-    result += escapeHtml(remainingText)
-  }
-
-  console.log('[renderCodeBlocks] Total code blocks found:', codeBlockCount, ', Output length:', result.length)
-  return result
-}
-
-function renderInlineCode(s: string): string {
-  return s.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>')
-}
-
-function renderBold(s: string): string {
-  let result = s.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-  result = result.replace(/__(.+?)__/g, '<strong class="font-semibold">$1</strong>')
-  return result
-}
-
-function renderItalic(s: string): string {
-  return s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-}
-
-function renderStrikethrough(s: string): string {
-  return s.replace(/~~(.+?)~~/g, '<del>$1</del>')
-}
-
-function renderLinks(s: string): string {
-  return s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="markdown-link">$1</a>')
-    .replace(/(?!\()\bhttps?:\/\/[^\s<>\]]+/gi, '<a href="$&" target="_blank" rel="noopener" class="markdown-link">$&</a>')
-}
-
-function renderHeaders(s: string): string {
-  return s
-    .replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
-    .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
-    .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
-    .replace(/^###\s+(.+)$/gm, '<h3 class="markdown-h3">$1</h3>')
-    .replace(/^##\s+(.+)$/gm, '<h2 class="markdown-h2">$1</h2>')
-    .replace(/^#\s+(.+)$/gm, '<h1 class="markdown-h1">$1</h1>')
-}
-
-function renderBlockquotes(s: string): string {
-  const lines = s.split('\n')
-  let inBlockquote = false
-  const result: string[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.startsWith('> ')) {
-      if (!inBlockquote) {
-        result.push('<blockquote class="blockquote">')
-        inBlockquote = true
-      }
-      result.push(line.substring(2))
-    } else {
-      if (inBlockquote) {
-        result.push('</blockquote>')
-        inBlockquote = false
-      }
-      result.push(line)
-    }
-  }
-
-  if (inBlockquote) {
-    result.push('</blockquote>')
-  }
-
-  return result.join('\n')
-}
-
-function renderLists(s: string): string {
-  const lines = s.split('\n')
-  const out: string[] = []
-  let listOpen = false
-  let listType = ''
-
-  for (const line of lines) {
-    const ulMatch = line.match(/^[-*]\s+(.*)$/)
-    const olMatch = line.match(/^\d+\.\s+(.*)$/)
-
-    if (ulMatch) {
-      if (listOpen && listType !== 'ul') {
-        out.push(listType === 'ol' ? '</ol>' : '</ul>')
-        listOpen = false
-        listType = ''
-      }
-      if (!listOpen || listType !== 'ul') {
-        out.push('<ul class="markdown-list">')
-        listOpen = true
-        listType = 'ul'
-      }
-      out.push(`<li>${ulMatch[1]}</li>`)
-    } else if (olMatch) {
-      if (listOpen && listType !== 'ol') {
-        out.push(listType === 'ul' ? '</ul>' : '</ol>')
-        listOpen = false
-        listType = ''
-      }
-      if (!listOpen || listType !== 'ol') {
-        out.push('<ol class="markdown-list-ordered">')
-        listOpen = true
-        listType = 'ol'
-      }
-      out.push(`<li>${olMatch[1]}</li>`)
-    } else {
-      if (listOpen) {
-        out.push(listType === 'ul' ? '</ul>' : '</ol>')
-        listOpen = false
-        listType = ''
-      }
-      out.push(line)
-    }
-  }
-
-  if (listOpen) {
-    out.push(listType === 'ul' ? '</ul>' : '</ol>')
-  }
-
-  return out.join('\n')
-}
-
-function renderHorizontalRule(s: string): string {
-  return s.replace(/^(-{3,}|\*{3,}|_{3,})$/gm, '<hr class="markdown-hr">')
-}
-
-function renderTables(s: string): string {
-  const lines = s.split('\n')
-  const result: string[] = []
-  let inTable = false
-  let tableHtml = ''
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim()
-
-    if (line.startsWith('|') && line.endsWith('|')) {
-      const cells = line.split('|').slice(1, -1).map(c => c.trim())
-
-      if (!inTable) {
-        inTable = true
-        tableHtml = '<table class="markdown-table"><thead><tr>'
-        cells.forEach(cell => {
-          tableHtml += `<th>${cell}</th>`
-        })
-        tableHtml += '</tr></thead><tbody>'
-      } else if (cells.every(c => /^[-:]+$/.test(c))) {
-        continue
-      } else {
-        tableHtml += '<tr>'
-        cells.forEach(cell => {
-          tableHtml += `<td>${cell}</td>`
-        })
-        tableHtml += '</tr>'
-      }
-    } else {
-      if (inTable) {
-        tableHtml += '</tbody></table>'
-        result.push(tableHtml)
-        tableHtml = ''
-        inTable = false
-      }
-      result.push(lines[i])
-    }
-  }
-
-  if (inTable) {
-    tableHtml += '</tbody></table>'
-    result.push(tableHtml)
-  }
-
-  return result.join('\n')
-}
-
-function renderThinkingMarkdown(text: string): string {
-  if (!text) return ''
-  
-  let html = escapeHtml(text)
-  
-  html = renderThinkingCodeBlocks(html)
-  html = renderThinkingInlineCode(html)
-  html = renderThinkingBold(html)
-  html = renderThinkingItalic(html)
-  html = renderThinkingLists(html)
-  html = renderThinkingHeaders(html)
-  html = renderThinkingLinks(html)
-  html = renderThinkingParagraphs(html)
-  
-  return html
-}
-
-function renderThinkingCodeBlocks(s: string): string {
-  const codeBlockRegex = /```(\w*)\s*\n([\s\S]*?)```/g
-  const incompleteCodeBlockRegex = /```(\w*)\s*\n([\s\S]*)$/
-  
-  let match
-  let result = ''
-  let lastIndex = 0
-  
-  while ((match = codeBlockRegex.exec(s)) !== null) {
-    result += s.substring(lastIndex, match.index)
-    
-    const language = match[1] || ''
-    const code = match[2].replace(/^[\n]|[\n]$/g, '')
-    const highlighted = highlightCode(code, language)
-    
-    result += `<div class="thinking-code-block"><div class="thinking-code-header"><span class="thinking-code-lang">${language || 'code'}</span></div><pre class="thinking-code-pre"><code>${highlighted}</code></pre></div>`
-    
-    lastIndex = match.index + match[0].length
-  }
-  
-  const remainingText = s.substring(lastIndex)
-  const incompleteMatch = incompleteCodeBlockRegex.exec(remainingText)
-  
-  if (incompleteMatch) {
-    result += remainingText.substring(0, incompleteMatch.index)
-    
-    const language = incompleteMatch[1] || ''
-    const code = incompleteMatch[2]
-    const highlighted = highlightCode(code, language)
-    
-    result += `<div class="thinking-code-block"><div class="thinking-code-header"><span class="thinking-code-lang">${language || 'code'}</span></div><pre class="thinking-code-pre"><code>${highlighted}</code></pre></div>`
-  } else {
-    result += remainingText
-  }
-  
-  return result
-}
-
-function renderThinkingInlineCode(s: string): string {
-  return s.replace(/`([^`\n]+)`/g, '<code class="thinking-inline-code">$1</code>')
-}
-
-function renderThinkingBold(s: string): string {
-  let result = s.replace(/\*\*(.+?)\*\*/g, '<strong class="thinking-bold">$1</strong>')
-  result = result.replace(/__(.+?)__/g, '<strong class="thinking-bold">$1</strong>')
-  return result
-}
-
-function renderThinkingItalic(s: string): string {
-  return s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em class="thinking-italic">$1</em>')
-}
-
-function renderThinkingLists(s: string): string {
-  const lines = s.split('\n')
-  const result: string[] = []
-  let inUnorderedList = false
-  let inOrderedList = false
-  
-  for (const line of lines) {
-    const unorderedMatch = line.match(/^(\s*)[-*+]\s+(.*)/)
-    const orderedMatch = line.match(/^(\s*)\d+\.\s+(.*)$/)
-    
-    if (unorderedMatch) {
-      if (!inUnorderedList) {
-        if (inOrderedList) {
-          result.push('</ol>')
-          inOrderedList = false
-        }
-        result.push('<ul class="thinking-list">')
-        inUnorderedList = true
-      }
-      result.push(`<li class="thinking-list-item">${unorderedMatch[2]}</li>`)
-    } else if (orderedMatch) {
-      if (!inOrderedList) {
-        if (inUnorderedList) {
-          result.push('</ul>')
-          inUnorderedList = false
-        }
-        result.push('<ol class="thinking-orderedList">')
-        inOrderedList = true
-      }
-      result.push(`<li class="thinking-orderedList-item">${orderedMatch[2]}</li>`)
-    } else {
-      if (inUnorderedList) {
-        result.push('</ul>')
-        inUnorderedList = false
-      } else if (inOrderedList) {
-        result.push('</ol>')
-        inOrderedList = false
-      }
-      result.push(line)
-    }
-  }
-  
-  if (inUnorderedList) result.push('</ul>')
-  if (inOrderedList) result.push('</ol>')
-  
-  return result.join('\n')
-}
-
-function renderThinkingHeaders(s: string): string {
-  let result = s
-  result = result.replace(/^#### (.+)$/gm, '<h4 class="thinking-h4">$1</h4>')
-  result = result.replace(/^### (.+)$/gm, '<h3 class="thinking-h3">$1</h3>')
-  result = result.replace(/^## (.+)$/gm, '<h2 class="thinking-h2">$1</h2>')
-  result = result.replace(/^# (.+)$/gm, '<h1 class="thinking-h1">$1</h1>')
-  return result
-}
-
-function renderThinkingLinks(s: string): string {
-  return s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="thinking-link">$1</a>')
-}
-
-function renderThinkingParagraphs(html: string): string {
-  const blocks = html.split(/\n{2,}/)
-  return blocks.map(block => {
-    const trimmed = block.trim()
-    if (!trimmed) return ''
-    if (/^<(ul|ol|li|h[1-6]|div|pre)/.test(trimmed)) {
-      return trimmed
-    }
-    return `<p class="thinking-p">${trimmed}</p>`
-  }).join('\n')
-}
-
-function mdToHtml(text: string): string {
-  let s = text
-
-  s = renderCodeBlocks(s)
-  s = renderInlineCode(s)
-  s = renderTables(s)
-  s = renderHeaders(s)
-  s = renderBold(s)
-  s = renderItalic(s)
-  s = renderStrikethrough(s)
-  s = renderLinks(s)
-  s = renderBlockquotes(s)
-  s = renderLists(s)
-  s = renderHorizontalRule(s)
-
-  return s
-}
-
 function splitParagraphs(html: string): string {
   const blocks: string[] = []
   let current = ''
@@ -541,19 +124,19 @@ const renderedContent = computed(() => {
 
   const normalized = normalizeContent(props.content)
 
-  console.log('[Markdown] Role:', props.role, 'Input length:', normalized.length)
-  console.log('[Markdown] First 200 chars:', normalized.substring(0, 200))
+  debug('[Markdown] Role:', props.role, 'Input length:', normalized.length)
+  debug('[Markdown] First 200 chars:', normalized.substring(0, 200))
 
   let result: string
 
   if (props.role === 'user') {
-    console.log('[Markdown] User message - extracting plain text from HTML')
+    debug('[Markdown] User message - extracting plain text from HTML')
     result = extractPlainText(normalized)
   } else if (containsSystemHtmlTags(normalized)) {
-    console.log('[Markdown] Detected system HTML tags (like stopped message), using smart processing')
+    debug('[Markdown] Detected system HTML tags (like stopped message), using smart processing')
     result = processMixedContent(normalized)
   } else if (normalized.includes('&lt;') || normalized.includes('&gt;')) {
-    console.log('[Markdown] Detected escaped HTML, unescaping...')
+    debug('[Markdown] Detected escaped HTML, unescaping...')
     const unescaped = normalized
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
@@ -613,7 +196,7 @@ function processMixedContent(text: string): string {
     const trimmedPart = part.trim()
     
     if (/^<p\s+class="/.test(trimmedPart)) {
-      console.log('[processMixedContent] Keeping system HTML as-is:', trimmedPart.substring(0, 50))
+      debug('[processMixedContent] Keeping system HTML as-is:', trimmedPart.substring(0, 50))
       return trimmedPart
     } else if (trimmedPart) {
       return mdToHtml(trimmedPart)
@@ -659,7 +242,7 @@ function removeDuplicateContent(html: string): string {
 
       if (duplicatePattern.test(beforeBlock)) {
         html = html.replace(duplicatePattern, '').replace(/\n{3,}/g, '\n\n')
-        console.log('[removeDuplicateContent] Removed duplicate content before code block')
+        debug('[removeDuplicateContent] Removed duplicate content before code block')
       }
     }
   }
@@ -718,7 +301,7 @@ async function handleCopyClick(e: Event) {
       if (copyText) copyText.textContent = '复制'
     }, 2000)
   } catch (err) {
-    console.error('[Copy] Failed to copy:', err)
+    error('[Copy] Failed to copy:', err)
   }
 }
 </script>
@@ -814,7 +397,7 @@ async function handleCopyClick(e: Event) {
 }
 .source-card { transition: border-color 0.15s ease, background-color 0.15s ease; }
 .source-card:hover { border-color: var(--color-accent-line); background-color: var(--color-bg-hover); }
-.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-2 { display: -webkit-box; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 .bubble-loading .bubble { animation: bubble-float 1.4s ease-in-out infinite; }
 .bubble-loading .bubble-1 { animation-delay: 0ms; }

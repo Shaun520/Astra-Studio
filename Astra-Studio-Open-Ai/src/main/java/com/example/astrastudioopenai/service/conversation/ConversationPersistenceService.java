@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -147,7 +148,8 @@ public class ConversationPersistenceService {
         flushToDbInternal(memoryId, ctx, bytes, checksum);
     }
 
-    private void flushToDbInternal(String memoryId, ConversationContext ctx, byte[] bytes, String checksum) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    protected void flushToDbInternal(String memoryId, ConversationContext ctx, byte[] bytes, String checksum) {
         try {
             ConversationEntity conv = conversationRepo.findByMemoryId(memoryId)
                     .orElseGet(() -> {

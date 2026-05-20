@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { error } from '../utils/logger'
+import { useToast } from '../composables/useToast'
 import { 
   BookOpen, 
   Upload, 
@@ -14,7 +16,7 @@ import {
 import { 
   getKnowledgeDocuments, 
   deleteKnowledgeDocument, 
-  importKnowledgeDocument,
+  uploadKnowledgeDocument,
   getKnowledgeDocumentStatus,
   type KnowledgeDocument 
 } from '@/services/api'
@@ -23,6 +25,7 @@ import { uploadFiles } from '@/services/oss'
 const documents = ref<KnowledgeDocument[]>([])
 const loading = ref(false)
 const uploading = ref(false)
+const toast = useToast()
 const page = ref(0)
 const totalPages = ref(0)
 const totalElements = ref(0)
@@ -31,7 +34,7 @@ const pageSize = 10
 let pollInterval: number | null = null
 
 async function fetchDocuments() {
-  loading.ref = true
+  loading.value = true
   try {
     const data = await getKnowledgeDocuments(page.value, pageSize)
     documents.value = data.content
@@ -45,8 +48,8 @@ async function fetchDocuments() {
     } else if (!hasProcessing && pollInterval) {
       stopPolling()
     }
-  } catch (error) {
-    console.error('Failed to fetch documents:', error)
+  } catch (e) {
+    error('Failed to fetch documents:', e)
   } finally {
     loading.value = false
   }
@@ -58,8 +61,9 @@ async function handleDelete(id: number) {
   try {
     await deleteKnowledgeDocument(id)
     await fetchDocuments()
-  } catch (error) {
-    alert('删除失败，请稍后重试')
+  } catch (e) {
+    error('Delete failed:', e)
+    toast.fromError(e, '删除失败')
   }
 }
 
@@ -75,13 +79,13 @@ async function handleFileUpload(event: Event) {
     const results = await uploadFiles([file])
     if (results.length > 0) {
       // 2. 导入到知识库
-      await importKnowledgeDocument(results[0].url, file.name)
+      await uploadKnowledgeDocument(results[0].url, file.name)
       // 3. 刷新列表
       await fetchDocuments()
     }
-  } catch (error) {
-    console.error('Upload failed:', error)
-    alert('上传失败')
+  } catch (e) {
+    error('Upload failed:', e)
+    toast.fromError(e, '上传失败')
   } finally {
     uploading.value = false
     target.value = '' // 重置 input
@@ -101,7 +105,7 @@ function startPolling() {
       const data = await getKnowledgeDocuments(page.value, pageSize)
       documents.value = data.content
     } catch (e) {
-      console.error('Polling failed:', e)
+      error('Polling failed:', e)
     }
   }, 3000)
 }

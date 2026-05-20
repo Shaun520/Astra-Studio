@@ -13,6 +13,7 @@ import com.example.astrastudioopenai.common.utils.MultipartUserMessageBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -20,6 +21,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 @Service
 @Slf4j
@@ -39,6 +42,10 @@ public class ChatService {
 
     @Value("${sse.timeout-ms:300000}")
     private long sseTimeoutMs;
+
+    @Autowired
+    @Qualifier("streamExecutor")
+    private Executor streamExecutor;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -91,8 +98,7 @@ public class ChatService {
         final AutoRouteResult finalRouteResult = routeResult;
         final ClassificationResult finalClassificationResult = classificationResult;
 
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newCachedThreadPool();
-        executor.execute(() -> {
+        streamExecutor.execute(() -> {
             try {
                 log.info("🚀 Starting TokenStream for memoryId: {}", memoryId);
 
@@ -155,7 +161,7 @@ public class ChatService {
                 .onPartialThinking(thinking -> {
                     try {
                         if (!connectionClosed[0]) {
-                            System.out.println("🤔 Thinking: " + thinking.text());
+                            log.debug("🤔 Thinking: {}", thinking.text());
                             AiStreamChunk chunk = new AiStreamChunk("thinking", thinking.text());
                             String json = objectMapper.writeValueAsString(chunk);
                             emitter.send(SseEmitter.event()
@@ -171,7 +177,7 @@ public class ChatService {
                 .onPartialResponse(content -> {
                     try {
                         if (!connectionClosed[0] && content != null && !content.isEmpty()) {
-                            System.out.println("💬 Text: " + content);
+                            log.debug("💬 Text: {}", content);
                             AiStreamChunk chunk = new AiStreamChunk("text", content);
                             String json = objectMapper.writeValueAsString(chunk);
                             emitter.send(SseEmitter.event()
@@ -221,8 +227,7 @@ public class ChatService {
                                     : "Unknown error";
                             emitter.send(SseEmitter.event()
                                     .name("error")
-                                    .data("{\"error\":\"" +
-                                            errorMessage.replace("\"", "\\\"") + "\"}"));
+                                    .data(objectMapper.writeValueAsString(Map.of("error", errorMessage))));
                         } catch (IOException e) {
                             log.warn("⚠️ Failed to send error event (client may have disconnected)", e);
                         } finally {
@@ -239,7 +244,7 @@ public class ChatService {
                 String errorMessage = e.getMessage() != null ? e.getMessage() : "Internal server error";
                 emitter.send(SseEmitter.event()
                         .name("error")
-                        .data("{\"error\":\"" + errorMessage.replace("\"", "\\\"") + "\"}"));
+                        .data(objectMapper.writeValueAsString(Map.of("error", errorMessage))));
             } catch (IOException ioException) {
                 log.warn("⚠️ Failed to send error event (client may have disconnected)", ioException);
             } finally {

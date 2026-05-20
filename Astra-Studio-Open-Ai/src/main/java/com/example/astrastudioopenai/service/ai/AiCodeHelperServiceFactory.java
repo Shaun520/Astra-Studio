@@ -79,10 +79,6 @@ public class AiCodeHelperServiceFactory {
         });
     }
 
-    private AiCodeHelperService buildService(boolean deepThink, boolean webSearch, String modelName) {
-        return buildService(deepThink, webSearch, modelName, false);
-    }
-
     private AiCodeHelperService buildService(boolean deepThink, boolean webSearch, String modelName,
             boolean knowledgeBase) {
         int timeoutSeconds = calculateTimeout(deepThink, webSearch, knowledgeBase);
@@ -102,10 +98,6 @@ public class AiCodeHelperServiceFactory {
         }
 
         return builder.build();
-    }
-
-    private int calculateTimeout(boolean deepThink, boolean webSearch) {
-        return calculateTimeout(deepThink, webSearch, false);
     }
 
     private int calculateTimeout(boolean deepThink, boolean webSearch, boolean knowledgeBase) {

@@ -2,6 +2,7 @@ package com.example.astrastudioopenai.service.knowledge;
 
 import com.example.astrastudioopenai.service.knowledge.DocumentETLPipeline;
 import com.example.astrastudioopenai.service.knowledge.RAGRetrievalService;
+import com.example.astrastudioopenai.dto.response.DocumentPageResponse;
 import com.example.astrastudioopenai.dto.response.RetrievedChunk;
 import com.example.astrastudioopenai.entity.KnowledgeDocumentEntity;
 import com.example.astrastudioopenai.repository.KnowledgeDocumentRepository;
@@ -64,26 +65,31 @@ public class KnowledgeService {
         return ResponseEntity.ok(results);
     }
 
-    public ResponseEntity<?> listDocuments(int page, int size) {
+    public ResponseEntity<DocumentPageResponse> listDocuments(int page, int size) {
         if (documentRepository == null) {
-            return ResponseEntity.status(503).body(List.of());
+            return ResponseEntity.status(503).body(DocumentPageResponse.builder()
+                    .content(List.of())
+                    .pageable(DocumentPageResponse.PageableInfo.builder().build())
+                    .empty(true).build());
         }
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         var pageResult = documentRepository.findAll(pageable);
-        return ResponseEntity.ok(Map.of(
-                "content", pageResult.getContent(),
-                "pageable", Map.of(
-                        "pageNumber", pageResult.getNumber(),
-                        "pageSize", pageResult.getSize(),
-                        "sort", pageResult.getSort()),
-                "last", pageResult.isLast(),
-                "totalPages", pageResult.getTotalPages(),
-                "totalElements", pageResult.getTotalElements(),
-                "size", pageResult.getSize(),
-                "number", pageResult.getNumber(),
-                "first", pageResult.isFirst(),
-                "numberOfElements", pageResult.getNumberOfElements(),
-                "empty", pageResult.isEmpty()));
+        return ResponseEntity.ok(DocumentPageResponse.builder()
+                .content(pageResult.getContent())
+                .pageable(DocumentPageResponse.PageableInfo.builder()
+                        .pageNumber(pageResult.getNumber())
+                        .pageSize(pageResult.getSize())
+                        .sort(pageResult.getSort().toString())
+                        .build())
+                .last(pageResult.isLast())
+                .totalPages(pageResult.getTotalPages())
+                .totalElements(pageResult.getTotalElements())
+                .size(pageResult.getSize())
+                .number(pageResult.getNumber())
+                .first(pageResult.isFirst())
+                .numberOfElements(pageResult.getNumberOfElements())
+                .empty(pageResult.isEmpty())
+                .build());
     }
 
     public ResponseEntity<Void> deleteDocument(Long id) {

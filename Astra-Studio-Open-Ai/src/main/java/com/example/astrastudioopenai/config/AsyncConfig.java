@@ -32,4 +32,16 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean("streamExecutor")
+    public Executor streamExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(Runtime.getRuntime().availableProcessors());
+        executor.setMaxPoolSize(Runtime.getRuntime().availableProcessors() * 2);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("stream-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
 }
