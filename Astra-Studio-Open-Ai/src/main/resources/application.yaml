@@ -50,6 +50,12 @@ conversation:
     enabled: true
     redis-ttl-hours: 24
     async-flush: true
+  default-model: deepseek-v4-flash
+  title:
+    auto-generate: true
+    max-length: 30
+    model-name: deepseek-v4-flash
+    timeout-seconds: 10
 
 # 知识库 RAG 配置（文档 ETL + 向量检索 + RAG 增强）
 knowledge-base:

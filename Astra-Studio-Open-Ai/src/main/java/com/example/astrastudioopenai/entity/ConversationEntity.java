@@ -28,8 +28,18 @@ public class ConversationEntity {
     @Column(name = "message_count")
     private Integer messageCount;
 
+    @Column(name = "last_message_preview")
+    private String lastMessagePreview;
+
     @Column(name = "status")
     private Short status;
+
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

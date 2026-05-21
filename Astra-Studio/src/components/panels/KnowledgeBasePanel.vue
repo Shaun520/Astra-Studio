@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { error } from '../utils/logger'
-import { useToast } from '../composables/useToast'
+import { debug, error } from '../../utils/logger'
+import { useToast } from '../../composables/useToast'
 import { 
   BookOpen, 
   Upload, 

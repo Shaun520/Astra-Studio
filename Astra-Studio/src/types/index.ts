@@ -75,3 +75,5 @@ export interface KnowledgeSource {
   page_number: number | null
   score: number
 }
+
+export type { ConversationItem, MessageItem, PageResult, CreateConversationRequest, UpdateTitleRequest } from './conversation'

@@ -1,3 +1,4 @@
+// 布局组件 - 顶部导航栏
 <script setup lang="ts">
 import { Share2, History, MoreHorizontal, ChevronDown, Pencil, Check, Link2, Copy, Download, QrCode, Clock, Trash2, RotateCcw, Pin, MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
 import { ref, inject, onMounted, onUnmounted, type Ref } from 'vue'
@@ -14,6 +15,9 @@ const startNewSession = inject<() => void>('startNewSession')
 
 // 注入全局模型状态（直接修改，绕过 emit）
 const selectedModel = inject<Ref<string>>('selectedModel')
+
+// 注入当前会话标题
+const currentTitle = inject<Ref<string>>('currentTitle')
 
 // 模型列表：value=API名称（传给后端），name=显示名称（UI展示）
 const models = [
@@ -85,7 +89,7 @@ const moreItems = [
       <span class="crumb text-[13.5px] text-text-3">创作</span>
       <span class="sep text-text-4">/</span>
       <span class="title text-[15px] font-medium flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap group">
-        长篇播客视觉方向
+        {{ currentTitle || '新对话' }}
         <Pencil class="edit-ic w-3.5 h-3.5 text-text-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100" />
       </span>
     </div>

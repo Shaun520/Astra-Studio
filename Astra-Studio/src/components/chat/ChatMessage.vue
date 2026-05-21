@@ -1,9 +1,11 @@
+﻿
 <script setup lang="ts">
+
 import AttachCard from './AttachCard.vue'
 import { Library } from 'lucide-vue-next'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
-import { debug, error } from '../utils/logger'
-import { mdToHtml, renderThinkingMarkdown } from '../utils/markdown'
+import { debug, error } from '../../utils/logger'
+import { mdToHtml, renderThinkingMarkdown } from '../../utils/markdown'
 import 'highlight.js/styles/vs2015.css'
 
 interface Props {
@@ -130,8 +132,9 @@ const renderedContent = computed(() => {
   let result: string
 
   if (props.role === 'user') {
-    debug('[Markdown] User message - extracting plain text from HTML')
-    result = extractPlainText(normalized)
+    debug('[Markdown] User message - wrapping in paragraph')
+    const plainText = extractPlainText(normalized)
+    result = `<p class="markdown-p">${plainText}</p>`
   } else if (containsSystemHtmlTags(normalized)) {
     debug('[Markdown] Detected system HTML tags (like stopped message), using smart processing')
     result = processMixedContent(normalized)
@@ -143,6 +146,9 @@ const renderedContent = computed(() => {
       .replace(/&amp;/g, '&')
       .replace(/&quot;/g, '"')
     result = mdToHtml(unescaped)
+  } else if (/^<p[\s>]/.test(normalized) || /^<div[\s>]/.test(normalized)) {
+    debug('[Markdown] Content is already HTML, using as-is')
+    result = normalized
   } else {
     result = mdToHtml(normalized)
   }
@@ -353,13 +359,13 @@ async function handleCopyClick(e: Event) {
         <!-- <div v-if="sources && sources.length > 0 && role === 'assistant'" class="sources-area mt-3 px-4 py-3 rounded-xl border border-accent/20 bg-accent/5">
           <div class="sources-header flex items-center gap-1.5 mb-2 text-[12px] font-medium text-accent">
             <Library class="w-[14px] h-[14px]" />
-            <span>知识库参考 ({{ sources.length }})</span>
+            <span>鐭ヨ瘑搴撳弬鑰?({{ sources.length }})</span>
           </div>
           <div class="sources-list flex flex-col gap-2">
             <div v-for="(src, idx) in sources.slice(0, 3)" :key="idx"
               class="source-card rounded-lg border border-border/50 bg-bg-1/60 px-3 py-2 text-[12px] leading-relaxed">
               <div class="source-meta flex items-center gap-2 mb-1">
-                <span class="source-doc font-medium text-text">{{ src.document_name || '未知文档' }}</span>
+                <span class="source-doc font-medium text-text">{{ src.document_name || '鏈煡鏂囨。' }}</span>
                 <span v-if="src.page_number" class="source-page text-text-4">P{{ src.page_number }}</span>
                 <span v-if="src.score" class="source-score ml-auto text-accent/70 tabular-nums font-mono">{{ (src.score * 100).toFixed(0) }}%</span>
               </div>

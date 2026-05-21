@@ -21,6 +21,13 @@ spring:
 #     similarity-threshold: 0.5
 #     top-k: 5
 
+# Redis 配置
+spring.data.redis:
+  host: localhost
+  port: 6379
+  password:
+  database: 0
+
 # 阿里云 OSS 配置（文件上传，密钥勿提交 Git）
 oss:
   access-key-id: your_oss_access_key_id

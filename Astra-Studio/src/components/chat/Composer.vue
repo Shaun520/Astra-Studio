@@ -1,7 +1,8 @@
+// 聊天核心组件 - 输入框/编辑器
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, reactive, inject, type Ref } from 'vue'
 import { Paperclip, Image, Mic, Globe, ArrowUp, X, FileText, Loader2, Square, Brain, Library } from 'lucide-vue-next'
-import { formatFileSize, getFileTypeLabel } from '../utils/file'
+import { formatFileSize, getFileTypeLabel } from '../../utils/file'
 
 const openImagePreview = inject<(images: { src: string; alt?: string }[], index?: number) => void>('openImagePreview')!
 const selectedModel = inject<Ref<string>>('selectedModel')!
@@ -13,7 +14,7 @@ const knowledgeBase = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
-const dragCounter = ref(0)
+let dragCounter = ref(0)
 
 interface PendingAttachment {
   id: number
@@ -188,7 +189,7 @@ function handlePaste(e: ClipboardEvent) {
     @dragleave="handleDragLeave"
     @drop="handleDrop"
   >
-    <!-- 拖拽提示遮罩 -->
+    <!-- 拖拽提示浮层 -->
     <Transition enter-active-class="transition-all duration-150 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100"
       leave-active-class="transition-all duration-100 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
       <div v-if="isDragging" class="drop-overlay absolute inset-0 z-50 rounded-xl border-2 border-dashed border-accent bg-accent/5 flex items-center justify-center pointer-events-none">
@@ -241,7 +242,7 @@ function handlePaste(e: ClipboardEvent) {
       <textarea
         ref="textareaRef"
         v-model="inputText"
-        placeholder="继续对话，或输入 / 调用图像、视频、语音工具…"
+        placeholder="继续对话，或输入 / 调用图像、视频、语音工具..."
         rows="1"
         :disabled="props.disabled"
         class="w-full bg-transparent border-0 outline-none resize-none text-text font-sans text-[14px] leading-[1.6] min-h-[22px] max-h-[160px] py-0.5 placeholder:text-text-4 disabled:opacity-50 disabled:cursor-not-allowed"

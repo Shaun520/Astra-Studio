@@ -19,8 +19,7 @@ public class SnapshotEntity {
     @JoinColumn(name = "conversation_id", nullable = false, unique = true)
     private ConversationEntity conversation;
 
-    @Lob
-    @Column(name = "snapshot_data", nullable = false, columnDefinition = "BYTEA")
+    @Column(name = "snapshot_data", nullable = false, columnDefinition = "bytea")
     private byte[] snapshotData;
 
     @Column(name = "version", nullable = false)

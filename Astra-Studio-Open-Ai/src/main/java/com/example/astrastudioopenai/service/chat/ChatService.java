@@ -8,9 +8,14 @@ import com.example.astrastudioopenai.dto.response.routing.ClassificationResult;
 import com.example.astrastudioopenai.service.routing.AutoRoutingService;
 import com.example.astrastudioopenai.service.routing.RoutingStatsService;
 import com.example.astrastudioopenai.service.knowledge.RAGRetrievalService;
+import com.example.astrastudioopenai.service.conversation.ConversationQueryService;
+import com.example.astrastudioopenai.service.conversation.ConversationPersistenceService;
+import com.example.astrastudioopenai.service.title.TitleGeneratorService;
 import com.example.astrastudioopenai.common.utils.SseEmitterHelper;
 import com.example.astrastudioopenai.common.utils.MultipartUserMessageBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -40,6 +45,15 @@ public class ChatService {
     @Autowired(required = false)
     private RAGRetrievalService ragRetrievalService;
 
+    @Autowired
+    private ConversationQueryService conversationQueryService;
+
+    @Autowired(required = false)
+    private ConversationPersistenceService persistenceService;
+
+    @Autowired(required = false)
+    private TitleGeneratorService titleGeneratorService;
+
     @Value("${sse.timeout-ms:300000}")
     private long sseTimeoutMs;
 
@@ -59,6 +73,18 @@ public class ChatService {
             boolean knowledgeBase) {
         log.info("memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}",
                 memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase);
+
+        try {
+            if (!conversationQueryService.conversationExists(memoryId)) {
+                log.info("Auto-creating conversation for memoryId: {}", memoryId);
+                conversationQueryService.createConversation(memoryId, modelName);
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to auto-create conversation for memoryId: {}. Chat aborted to prevent data loss.",
+                    memoryId, e);
+            throw new RuntimeException("Failed to create conversation for memoryId: " + memoryId
+                    + ". Cannot proceed with chat without valid conversation context.", e);
+        }
 
         String resolvedModelName = modelName;
         AutoRouteResult routeResult = null;
@@ -102,6 +128,10 @@ public class ChatService {
             try {
                 log.info("🚀 Starting TokenStream for memoryId: {}", memoryId);
 
+                if (persistenceService != null) {
+                    persistenceService.saveUserMessage(memoryId, userMessageText);
+                }
+
                 sendRoutingInfo(emitter, finalResolvedModelName, finalRouteResult, connectionClosed);
 
                 AiCodeHelperService selectedService = aiServiceFactory.getService(deepThink, webSearch,
@@ -118,7 +148,7 @@ public class ChatService {
                         userMessageText);
 
                 subscribeTokenStream(tokenStream, emitter, connectionClosed,
-                        knowledgeBase ? text : null);
+                        knowledgeBase ? text : null, memoryId, userMessageText, finalResolvedModelName);
 
             } catch (Exception e) {
                 log.error("❌ Error in streaming chat", e);
@@ -156,7 +186,8 @@ public class ChatService {
     }
 
     private void subscribeTokenStream(dev.langchain4j.service.TokenStream tokenStream,
-            SseEmitter emitter, boolean[] connectionClosed, String ragQuery) {
+            SseEmitter emitter, boolean[] connectionClosed, String ragQuery,
+            String memoryId, String userMessageText, String modelName) {
         tokenStream
                 .onPartialThinking(thinking -> {
                     try {
@@ -216,6 +247,12 @@ public class ChatService {
                     } catch (IOException e) {
                         log.error("❌ Error completing stream", e);
                         SseEmitterHelper.safeComplete(emitter, connectionClosed);
+                    } finally {
+                        String assistantContent = extractResponseText(response);
+                        if (assistantContent != null && !assistantContent.isEmpty() && persistenceService != null) {
+                            persistenceService.saveAssistantMessage(memoryId, assistantContent, null);
+                        }
+                        generateTitleAsync(memoryId, userMessageText, response);
                     }
                 })
                 .onError(error -> {
@@ -281,5 +318,69 @@ public class ChatService {
         if (reason.contains("GENERAL") || reason.contains("通用"))
             return "GENERAL_CHAT";
         return "UNKNOWN";
+    }
+
+    private void generateTitleAsync(String memoryId, String userMessage, Object response) {
+        if (titleGeneratorService == null) {
+            return;
+        }
+
+        streamExecutor.execute(() -> {
+            try {
+                String assistantReply = extractResponseText(response);
+                String generatedTitle = titleGeneratorService.generate(userMessage,
+                        assistantReply != null ? assistantReply : "");
+                conversationQueryService.updateTitle(memoryId, generatedTitle);
+                log.info("📝 Auto-generated title for memoryId={}: {}", memoryId, generatedTitle);
+            } catch (Exception e) {
+                log.warn("Failed to auto-generate title for memoryId={}: {}", memoryId, e.getMessage());
+            }
+        });
+    }
+
+    private void saveConversationContext(String memoryId, String userMessageText, Object response, String modelName) {
+        if (persistenceService == null) {
+            log.warn("⚠️ ConversationPersistenceService is null, skipping message persistence for memoryId={}",
+                    memoryId);
+            return;
+        }
+        try {
+            com.example.astrastudioopenai.service.conversation.ConversationContext ctx = new com.example.astrastudioopenai.service.conversation.ConversationContext();
+            ctx.setMemoryId(memoryId);
+            ctx.setModelName(modelName);
+
+            com.example.astrastudioopenai.dto.response.MessageEntry userEntry = new com.example.astrastudioopenai.dto.response.MessageEntry(
+                    "user", userMessageText, 0);
+            ctx.getMessages().add(userEntry);
+
+            String assistantContent = extractResponseText(response);
+            if (assistantContent != null && !assistantContent.isEmpty()) {
+                com.example.astrastudioopenai.dto.response.MessageEntry assistantEntry = new com.example.astrastudioopenai.dto.response.MessageEntry(
+                        "assistant", assistantContent, 1);
+                ctx.getMessages().add(assistantEntry);
+            }
+
+            persistenceService.saveContext(memoryId, ctx);
+            log.info("💾 Saved conversation context for memoryId={}, messages={}", memoryId, ctx.getMessageCount());
+        } catch (Exception e) {
+            log.warn("Failed to save conversation context for memoryId={}: {}", memoryId, e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractResponseText(Object response) {
+        if (response == null) {
+            return null;
+        }
+        try {
+            ChatResponse chatResponse = (ChatResponse) response;
+            dev.langchain4j.data.message.AiMessage aiMessage = chatResponse.aiMessage();
+            if (aiMessage != null) {
+                return aiMessage.text();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract text from ChatResponse, fallback to toString: {}", e.getMessage());
+        }
+        return response.toString();
     }
 }
