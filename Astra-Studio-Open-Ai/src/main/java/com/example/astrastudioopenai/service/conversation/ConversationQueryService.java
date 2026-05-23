@@ -1,5 +1,7 @@
 package com.example.astrastudioopenai.service.conversation;
 
+import com.example.astrastudioopenai.common.monitoring.MetricsCollector;
+import com.example.astrastudioopenai.common.utils.PerformanceMonitor;
 import com.example.astrastudioopenai.dto.response.ConversationDTO;
 import com.example.astrastudioopenai.dto.response.MessageDTO;
 import com.example.astrastudioopenai.dto.response.PageResult;
@@ -24,6 +26,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +35,9 @@ public class ConversationQueryService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final PerformanceMonitor performanceMonitor;
+    private final ConversationCacheService cacheService;
+    private final MetricsCollector metricsCollector;
 
     @Transactional(readOnly = true)
     public boolean conversationExists(String memoryId) {
@@ -57,17 +63,42 @@ public class ConversationQueryService {
 
     @Transactional(readOnly = true)
     public PageResult<ConversationEntity> listConversations(int page, int size, String keyword) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ConversationEntity> result;
+        String operationName = StringUtils.hasText(keyword)
+                ? "listConversations_with_search"
+                : "listConversations_default";
 
-        if (StringUtils.hasText(keyword)) {
-            result = conversationRepository.findByStatusNotAndTitleContainingIgnoreCase(
-                    (short) -1, keyword, pageable);
-        } else {
-            result = conversationRepository.findByStatusNotOrderByUpdatedAtDesc((short) -1, pageable);
+        try {
+            return performanceMonitor.measureTime(operationName, () -> {
+                metricsCollector.incrementCounter("conversation_list_queries_total");
+
+                Optional<PageResult<ConversationEntity>> cached = cacheService.getCachedConversationList(page, size,
+                        keyword);
+                if (cached.isPresent()) {
+                    log.debug("🎯 Returning cached conversation list");
+                    metricsCollector.incrementCounter("conversation_list_cache_hits");
+                    return cached.get();
+                }
+
+                Pageable pageable = PageRequest.of(page, size);
+                Page<ConversationEntity> result;
+
+                if (StringUtils.hasText(keyword)) {
+                    result = conversationRepository.findByStatusNotAndTitleContainingIgnoreCase(
+                            (short) -1, keyword, pageable);
+                } else {
+                    result = conversationRepository.findByStatusNotOrderByUpdatedAtDesc((short) -1, pageable);
+                }
+
+                PageResult<ConversationEntity> pageResult = PageResult.fromSpringPage(result);
+
+                cacheService.cacheConversationList(page, size, keyword, pageResult);
+
+                return pageResult;
+            });
+        } catch (Exception e) {
+            metricsCollector.incrementCounter("conversation_list_errors");
+            throw new RuntimeException("Failed to list conversations", e);
         }
-
-        return PageResult.fromSpringPage(result);
     }
 
     @Transactional
@@ -90,6 +121,9 @@ public class ConversationQueryService {
 
         ConversationEntity saved = conversationRepository.save(conv);
         log.info("Created conversation successfully: id={}, memoryId={}", saved.getId(), saved.getMemoryId());
+
+        cacheService.invalidateConversationListCache();
+
         return saved;
     }
 
@@ -108,6 +142,7 @@ public class ConversationQueryService {
         conversationRepository.save(conv);
 
         log.info("Updated title for conversation: memoryId={}, title={}", memoryId, title);
+        cacheService.invalidateConversationListCache();
     }
 
     @Transactional
@@ -127,6 +162,7 @@ public class ConversationQueryService {
         conversationRepository.save(conv);
 
         log.info("Soft deleted conversation: memoryId={}", memoryId);
+        cacheService.invalidateConversationListCache();
     }
 
     @Transactional(readOnly = true)
@@ -147,11 +183,7 @@ public class ConversationQueryService {
         return PageResult.fromMessagePage(result);
     }
 
-    @Retryable(
-            value = {OptimisticLockingFailureException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 100)
-    )
+    @Retryable(value = { OptimisticLockingFailureException.class }, maxAttempts = 3, backoff = @Backoff(delay = 100))
     @Transactional
     public void incrementMessageCount(String memoryId) {
         ConversationEntity conv = findByMemoryIdOrThrow(memoryId);

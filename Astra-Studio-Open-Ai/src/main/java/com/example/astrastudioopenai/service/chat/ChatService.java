@@ -188,11 +188,18 @@ public class ChatService {
     private void subscribeTokenStream(dev.langchain4j.service.TokenStream tokenStream,
             SseEmitter emitter, boolean[] connectionClosed, String ragQuery,
             String memoryId, String userMessageText, String modelName) {
+
+        final StringBuilder thinkingBuffer = new StringBuilder();
+        final StringBuilder contentBuffer = new StringBuilder();
+
         tokenStream
                 .onPartialThinking(thinking -> {
                     try {
                         if (!connectionClosed[0]) {
                             log.debug("🤔 Thinking: {}", thinking.text());
+                            if (thinking.text() != null) {
+                                thinkingBuffer.append(thinking.text());
+                            }
                             AiStreamChunk chunk = new AiStreamChunk("thinking", thinking.text());
                             String json = objectMapper.writeValueAsString(chunk);
                             emitter.send(SseEmitter.event()
@@ -209,6 +216,7 @@ public class ChatService {
                     try {
                         if (!connectionClosed[0] && content != null && !content.isEmpty()) {
                             log.debug("💬 Text: {}", content);
+                            contentBuffer.append(content);
                             AiStreamChunk chunk = new AiStreamChunk("text", content);
                             String json = objectMapper.writeValueAsString(chunk);
                             emitter.send(SseEmitter.event()
@@ -248,15 +256,16 @@ public class ChatService {
                         log.error("❌ Error completing stream", e);
                         SseEmitterHelper.safeComplete(emitter, connectionClosed);
                     } finally {
-                        String assistantContent = extractResponseText(response);
-                        if (assistantContent != null && !assistantContent.isEmpty() && persistenceService != null) {
-                            persistenceService.saveAssistantMessage(memoryId, assistantContent, null);
-                        }
+                        saveCollectedContent(memoryId, response, thinkingBuffer, contentBuffer);
                         generateTitleAsync(memoryId, userMessageText, response);
                     }
                 })
                 .onError(error -> {
                     log.error("❌ Stream error: ", error);
+
+                    // 💾 即使出错也要保存已收集的内容
+                    savePartialContentOnError(memoryId, thinkingBuffer, contentBuffer, error);
+
                     if (!connectionClosed[0]) {
                         try {
                             String errorMessage = error != null
@@ -273,6 +282,63 @@ public class ChatService {
                     }
                 })
                 .start();
+    }
+
+    /**
+     * 保存正常完成时收集到的完整内容
+     */
+    private void saveCollectedContent(String memoryId, Object response,
+            StringBuilder thinkingBuffer, StringBuilder contentBuffer) {
+        try {
+            String assistantContent = extractResponseText(response);
+
+            // 如果 extractResponseText 返回空，使用收集器中的内容作为后备
+            if ((assistantContent == null || assistantContent.isEmpty()) && contentBuffer.length() > 0) {
+                assistantContent = contentBuffer.toString().trim();
+            }
+
+            String collectedThinking = thinkingBuffer.length() > 0 ? thinkingBuffer.toString().trim() : null;
+
+            if (assistantContent != null && !assistantContent.isEmpty() && persistenceService != null) {
+                persistenceService.saveAssistantMessage(memoryId, assistantContent, collectedThinking);
+                log.info("💾 Saved complete assistant message with thinkingContent (length={}) for memoryId={}",
+                        collectedThinking != null ? collectedThinking.length() : 0, memoryId);
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to save complete message for memoryId={}: {}", memoryId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 保存错误发生时已收集的部分内容（确保不丢失上下文）
+     */
+    private void savePartialContentOnError(String memoryId,
+            StringBuilder thinkingBuffer, StringBuilder contentBuffer, Throwable error) {
+        if (persistenceService == null) {
+            log.warn("⚠️ Cannot save partial content: persistenceService is null");
+            return;
+        }
+
+        try {
+            String partialContent = contentBuffer.length() > 0 ? contentBuffer.toString().trim() : null;
+            String partialThinking = thinkingBuffer.length() > 0 ? thinkingBuffer.toString().trim() : null;
+
+            if (partialContent != null && !partialContent.isEmpty()) {
+                // 在内容末尾添加错误标记
+                String contentWithMarker = partialContent + "\n\n[生成中断: " +
+                        (error.getMessage() != null ? error.getMessage() : "未知错误") + "]";
+
+                persistenceService.saveAssistantMessage(memoryId, contentWithMarker, partialThinking);
+                log.warn("💾 Saved partial assistant message ({} chars, thinking={} chars) after error for memoryId={}",
+                        partialContent.length(),
+                        partialThinking != null ? partialThinking.length() : 0,
+                        memoryId);
+            } else {
+                log.info("ℹ️ No partial content to save for memoryId={}", memoryId);
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to save partial content for memoryId={}: {}", memoryId, e.getMessage(), e);
+        }
     }
 
     private void handleStreamingError(SseEmitter emitter, Exception e, boolean[] connectionClosed) {

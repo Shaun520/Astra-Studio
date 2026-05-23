@@ -1,5 +1,5 @@
-﻿// 会话管理组件 - 删除确认对话框
-<script setup lang="ts">
+﻿<script setup lang="ts">
+/* 会话管理组件 - 删除确认对话框 */
 import { AlertTriangle } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -32,8 +32,8 @@ function handleCancel() {
               <AlertTriangle class="w-4.5 h-4.5 text-red-400" />
             </div>
             <div>
-              <h3 class="text-[14px] font-semibold text-text">{{ title || '纭鍒犻櫎' }}</h3>
-              <p class="text-[12.5px] text-text-3 mt-1 leading-relaxed">{{ message || '鍒犻櫎鍚庢棤娉曟仮澶嶏紝纭畾瑕佸垹闄よ繖涓璇濆悧锛? }}</p>
+              <h3 class="text-[14px] font-semibold text-text">{{ title || '确认删除' }}</h3>
+              <p class="text-[12.5px] text-text-3 mt-1 leading-relaxed">{{ message || '删除后无法恢复，确定要删除这个对话吗？' }}</p>
             </div>
           </div>
           <div class="flex justify-end gap-2.5">
@@ -41,13 +41,13 @@ function handleCancel() {
               @click="handleCancel"
               class="px-3.5 py-1.5 text-[12.5px] text-text-2 bg-bg-2 hover:bg-bg-hover rounded-lg transition-colors border-0 cursor-pointer"
             >
-              鍙栨秷
+              取消
             </button>
             <button
               @click="handleConfirm"
               class="px-3.5 py-1.5 text-[12.5px] text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors border-0 cursor-pointer"
             >
-              纭鍒犻櫎
+              确认删除
             </button>
           </div>
         </div>
@@ -60,4 +60,3 @@ function handleCancel() {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
-

@@ -1,5 +1,5 @@
-// 布局组件 - 左侧边栏
 <script setup lang="ts">
+/* 布局组件 - 左侧边栏 */
 import { ref, computed, inject, onMounted,type Ref  } from 'vue'
 import {
   MessageSquare, Image, Video, Code2, Languages,
@@ -10,12 +10,32 @@ import type { ConversationItem } from '@/types/conversation'
 import ConversationCard from '../conversation/ConversationCard.vue'
 import ConversationSearch from '../conversation/ConversationSearch.vue'
 import EmptyState from '../conversation/EmptyState.vue'
+import ContextMenu from '../conversation/ContextMenu.vue'
+import DeleteConfirmDialog from '../conversation/DeleteConfirmDialog.vue'
 import SkeletonLoader from '../common/SkeletonLoader.vue'
+import { deleteConversation } from '@/services/api'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 const activeNav = ref('对话')
 const toolsOpen = ref(false)
 const searchKeyword = ref('')
 const isLoadingList = ref(false)
+
+// 右键菜单状态
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  targetId: ''
+})
+
+// 删除确认对话框状态
+const deleteDialog = ref({
+  visible: false,
+  targetId: ''
+})
 
 const emit = defineEmits<{
   (e: 'navigate', label: string): void
@@ -75,6 +95,82 @@ function handleNewConversation() {
 
 async function handleSearch(keyword: string) {
   searchKeyword.value = keyword
+}
+
+// 右键菜单处理
+function handleContextMenu(e: MouseEvent, memoryId: string) {
+  e.preventDefault()
+  contextMenu.value = {
+    visible: true,
+    x: e.clientX,
+    y: e.clientY,
+    targetId: memoryId
+  }
+}
+
+// 关闭右键菜单
+function closeContextMenu() {
+  contextMenu.value.visible = false
+}
+
+// 从上下文菜单点击删除
+function handleContextDelete() {
+  deleteDialog.value = {
+    visible: true,
+    targetId: contextMenu.value.targetId
+  }
+  closeContextMenu()
+}
+
+// 确认删除
+async function confirmDelete() {
+  const memoryId = deleteDialog.value.targetId
+  const isDeletingCurrent = currentSessionId?.value === memoryId
+  
+  // 如果删除的是当前会话，预先选择临近的会话
+  let fallbackMemoryId: string | null = null
+  if (isDeletingCurrent && conversationList?.value) {
+    const currentIndex = conversationList.value.findIndex(c => c.memoryId === memoryId)
+    
+    if (conversationList.value.length > 1) {
+      // 优先选择下一个会话，如果没有则选择上一个
+      const nextIndex = currentIndex < conversationList.value.length - 1 ? currentIndex + 1 : currentIndex - 1
+      fallbackMemoryId = conversationList.value[nextIndex]?.memoryId || null
+    }
+    // 如果只有一个会话且被删除，fallbackMemoryId 保持为 null，后续会创建新会话
+  }
+  
+  try {
+    await deleteConversation(memoryId)
+    
+    // 处理当前会话被删除的情况
+    if (isDeletingCurrent) {
+      if (fallbackMemoryId) {
+        // 切换到临近的会话
+        emit('restore', fallbackMemoryId)
+      } else {
+        // 没有其他会话了，创建新会话
+        emit('new-conversation')
+      }
+    }
+    
+    // 刷新列表
+    if (refreshConversations) {
+      await refreshConversations()
+    }
+    
+    toast?.success('删除成功', '对话已被永久删除')
+  } catch (e) {
+    console.error('[Sidebar] Delete failed:', e)
+    toast?.fromError(e, '删除失败')
+  } finally {
+    deleteDialog.value.visible = false
+  }
+}
+
+// 取消删除
+function cancelDelete() {
+  deleteDialog.value.visible = false
 }
 
 const isToolActive = computed(() => {
@@ -179,11 +275,29 @@ onMounted(async () => {
             :conversation="conv"
             :is-active="currentSessionId === conv.memoryId"
             @click="handleRestore"
-            @contextmenu="(e: MouseEvent, id: string) => {}"
+            @contextmenu="handleContextMenu"
           />
         </div>
       </div>
     </div>
+
+    <!-- 右键上下文菜单 -->
+    <ContextMenu
+      :visible="contextMenu.visible"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @delete="handleContextDelete"
+      @close="closeContextMenu"
+    />
+
+    <!-- 删除确认对话框 -->
+    <DeleteConfirmDialog
+      :visible="deleteDialog.visible"
+      title="确认删除"
+      message="删除后无法恢复，确定要删除这个对话吗？"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
 
     <div class="sidebar-footer mt-auto">
       <div class="user-card flex items-center gap-2.5 p-2.5 border border-border rounded-[10px]">

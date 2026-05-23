@@ -1,7 +1,8 @@
 ﻿<script setup lang="ts">
 /* 会话管理组件 - 会话搜索框 */
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { Search, X } from 'lucide-vue-next'
+import { debounce } from '../../utils/debounce'
 
 const props = defineProps<{
   modelValue: string
@@ -12,16 +13,14 @@ const emit = defineEmits<{
   (e: 'search', keyword: string): void
 }>()
 
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
+const debouncedSearch = debounce((value: string) => {
+  emit('search', value)
+}, 300)
 
 function handleInput(e: Event) {
   const value = (e.target as HTMLInputElement).value
   emit('update:modelValue', value)
-  
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    emit('search', value)
-  }, 300)
+  debouncedSearch(value)
 }
 
 function clearSearch() {
@@ -37,7 +36,7 @@ function clearSearch() {
       type="text"
       :value="modelValue"
       @input="handleInput"
-      placeholder="鎼滅储瀵硅瘽..."
+      placeholder="搜索会话..."
       class="w-full pl-8 pr-8 py-1.5 text-[12px] bg-bg border border-border rounded-lg text-text placeholder:text-text-4 focus:outline-none focus:border-accent transition-colors"
     />
     <button
@@ -49,4 +48,3 @@ function clearSearch() {
     </button>
   </div>
 </template>
-
