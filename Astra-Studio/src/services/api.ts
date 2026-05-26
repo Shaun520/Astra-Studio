@@ -23,6 +23,7 @@ export interface SendChatMessageOptions {
   deepThink?: boolean
   webSearch?: boolean
   knowledgeBase?: boolean
+  selectedTools?: string[]
   model?: string
 }
 
@@ -84,6 +85,9 @@ export async function sendChatMessage(
   }
   if (options.knowledgeBase) {
     formData.append('knowledgeBase', 'true')
+  }
+  if (options.selectedTools?.length) {
+    options.selectedTools.forEach(tool => formData.append('selectedTools', tool))
   }
   formData.append('model', options.model || 'auto')
 
@@ -151,6 +155,7 @@ export interface KnowledgeDocument {
   errorMessage?: string
   createdAt: string
   updatedAt: string
+  contentType?: string
 }
 
 export interface Page<T> {
@@ -247,4 +252,63 @@ export async function deleteConversation(memoryId: string): Promise<void> {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
+}
+
+// ==================== Tool APIs ====================
+
+export interface ToolInfo {
+  name: string
+  description: string
+  className: string
+  status: 'ACTIVE' | 'DISABLED'
+  registeredAt: string
+  callCount: number
+}
+
+export interface PdfGenerationResult {
+  success: boolean
+  message: string
+  fileName: string
+  fileSizeBytes: number
+  pageCount: number
+  pageSize: string
+  downloadUrl: string
+}
+
+export interface ToolExecuteResponse {
+  success: boolean
+  toolName: string
+  methodName: string
+  result: any
+  timestamp: string
+  executionTimeMs?: number
+  error?: string
+  errorType?: string
+}
+
+export async function getAllTools(): Promise<ToolInfo[]> {
+  const response = await fetch(`${API_BASE_URL}/tools`)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function executeTool(
+  toolName: string,
+  params: Record<string, any> = {}
+): Promise<ToolExecuteResponse> {
+  const response = await fetch(`${API_BASE_URL}/tools/${toolName}/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
+export async function downloadPdf(fileName: string): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE_URL}/tools/pdfGeneratorTool/download?fileName=${encodeURIComponent(fileName)}`
+  )
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.blob()
 }

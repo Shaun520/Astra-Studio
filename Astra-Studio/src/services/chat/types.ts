@@ -14,5 +14,6 @@ export interface SendChatMessageOptions {
   deepThink?: boolean
   webSearch?: boolean
   knowledgeBase?: boolean
+  selectedTools?: string[]
   model?: string
 }

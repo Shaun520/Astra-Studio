@@ -2,8 +2,6 @@ package com.example.astrastudioopenai.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 
@@ -21,6 +19,9 @@ public class KnowledgeDocumentEntity {
 
     @Column(name = "file_type", nullable = false)
     private String fileType;
+
+    @Column(name = "content_type")
+    private String contentType;
 
     @Column(name = "file_url")
     private String fileUrl;

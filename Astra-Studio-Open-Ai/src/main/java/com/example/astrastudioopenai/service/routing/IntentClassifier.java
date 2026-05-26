@@ -77,7 +77,7 @@ public class IntentClassifier {
                         extractKeywordGroups(configMap.get("keywords")),
                         extractPatterns(configMap.get("patterns")),
                         ((Number) configMap.getOrDefault("weight", 0.7)).doubleValue(),
-                        (String) configMap.getOrDefault("target_model", "glm-5"),
+                        (String) configMap.getOrDefault("target_model", "glm-5.1"),
                         (String) configMap.getOrDefault("description", "")
                     );
                     intents.add(intentConfig);

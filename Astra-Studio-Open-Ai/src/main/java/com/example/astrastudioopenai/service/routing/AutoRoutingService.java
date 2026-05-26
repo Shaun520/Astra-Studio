@@ -23,7 +23,7 @@ public class AutoRoutingService {
     @Value("${auto-routing.confidence-threshold:0.6}")
     private double confidenceThreshold;
 
-    @Value("${auto-routing.default-model:glm-5}")
+    @Value("${auto-routing.default-model:glm-5.1}")
     private String defaultModel;
 
     public AutoRouteResult autoRoute(String userText, String explicitModel) {

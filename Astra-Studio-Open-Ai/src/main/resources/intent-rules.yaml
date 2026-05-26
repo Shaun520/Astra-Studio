@@ -43,5 +43,5 @@ intents:
       - "^(你好|嗨|Hi|Hello).*"
       - ".*天气.*样"
     weight: 0.75
-    target_model: "glm-5"
+    target_model: "glm-5.1"
     description: "通用对话、多轮交互、日常闲聊（兜底类别）"

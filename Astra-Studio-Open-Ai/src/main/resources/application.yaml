@@ -23,7 +23,7 @@ langchain4j:
       log-responses: true
       api-key: ${custom.api-keys.dashscope}
       return-thinking: true
-      timeout: 30s
+      timeout: 5m
       max-retries: 2
       reasoning-effort: low
     streaming-chat-model:
@@ -31,7 +31,7 @@ langchain4j:
       model-name: deepseek-v4-flash
       api-key: ${custom.api-keys.dashscope}
       return-thinking: false
-      timeout: 30s
+      timeout: 5m
       max-retries: 2
       log-requests: true
       log-responses: true
@@ -40,7 +40,7 @@ langchain4j:
 auto-routing:
   enabled: true
   confidence-threshold: 0.4
-  default-model: glm-5
+  default-model: glm-5.1
   rules-file: classpath:intent-rules.yaml
   rules-hot-reload: false
 
@@ -70,3 +70,56 @@ knowledge-base:
     similarity-threshold: 0.5
     retrieval-timeout-ms: 3000
     cache-ttl-seconds: 30
+
+  # 多模态 Embedding 配置（用于图片向量化）
+  multimodal-embedding:
+      enabled: true
+      model-name: qwen3-vl-embedding
+      dimensions: 1024
+      api-endpoint: https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
+      timeout-seconds: 30
+      max-retries: 3
+      instruct: "用于RAG检索的图片内容描述"
+      max-file-size: 5MB
+      supported-formats: jpg,png,webp
+      max-batch-count: 10
+
+  # 视觉模型配置（用于生成图片文字描述）
+  vision-model:
+    enabled: true
+    model-name: qwen-vl-max-latest
+    api-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+
+# 多工具生态系统配置（@Tool 工具集 + ToolRegistry）
+tools:
+  enabled: true
+  default-timeout-ms: 60000
+  max-concurrent-executions: 10
+  disabled-list: []
+  # 单个工具可通过 @Tool(timeout = xxx) 覆盖全局超时
+  # 并发控制基于 Semaphore，达到上限时阻塞等待
+
+# 图片分析工具配置（ImageAnalyzerTool）- 使用 DashScope/OpenAI Vision API
+image-analyzer:
+  api-key: ${custom.api-keys.dashscope}
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen-vl-max-latest
+  timeout-ms: 30000
+# 网页抓取工具配置（WebScraperTool）
+web-scraper:
+  timeout-ms: 10000
+  max-retries: 2
+  min-request-interval-ms: 1000
+  max-content-size-bytes: 5242880  # 5MB
+  allowed-domains: []  # 空表示允许所有域名
+  blocked-domains: []
+  follow-redirects: true
+  user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+# PDF生成工具配置（PdfGeneratorTool）
+pdf-generator:
+  default-font-size: 11
+  margin-mm: 15
+  page-format: A4
+  max-pages: 100
+  output-quality: high

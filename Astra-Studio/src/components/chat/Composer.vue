@@ -1,7 +1,7 @@
-// 聊天核心组件 - 输入框/编辑器
 <script setup lang="ts">
+/* 聊天核心组件 - 输入框/编辑器 */
 import { ref, computed, nextTick, watch, reactive, inject, type Ref } from 'vue'
-import { Paperclip, Image, Mic, Globe, ArrowUp, X, FileText, Loader2, Square, Brain, Library } from 'lucide-vue-next'
+import { Paperclip, Image, Mic, Globe, ArrowUp, X, FileText, Loader2, Square, Brain, Library, Wrench, Check } from 'lucide-vue-next'
 import { formatFileSize, getFileTypeLabel } from '../../utils/file'
 
 const openImagePreview = inject<(images: { src: string; alt?: string }[], index?: number) => void>('openImagePreview')!
@@ -11,10 +11,64 @@ const inputText = ref('')
 const deepThink = ref(false)
 const webSearch = ref(false)
 const knowledgeBase = ref(false)
+const selectedTools = ref<string[]>([])
+const showToolPicker = ref(false)
+const toolButtonRef = ref<HTMLButtonElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
 let dragCounter = ref(0)
+
+interface ToolOption {
+  name: string
+  label: string
+  icon: string
+  description: string
+}
+
+const toolOptions: ToolOption[] = [
+  { name: 'pdfGeneratorTool', label: 'PDF生成', icon: '📄', description: 'Markdown转PDF文档' },
+  { name: 'imageAnalyzerTool', label: '图片分析', icon: '✨', description: '图片描述/OCR识别' },
+  { name: 'webScraperTool', label: '网页抓取', icon: '🌐', description: '抓取网页内容' },
+  { name: 'codeExecutorTool', label: '代码执行', icon: '⚡', description: '执行代码并返回结果' },
+  { name: 'dataProcessorTool', label: '数据处理', icon: '🔬', description: 'CSV/JSON数据处理' },
+]
+
+function toggleTool(toolName: string) {
+  const idx = selectedTools.value.indexOf(toolName)
+  if (idx >= 0) {
+    selectedTools.value.splice(idx, 1)
+  } else {
+    selectedTools.value.push(toolName)
+  }
+}
+
+function isToolSelected(toolName: string): boolean {
+  return selectedTools.value.includes(toolName)
+}
+
+const toolButtonLabel = computed(() => {
+  if (selectedTools.value.length === 0) return '工具'
+  if (selectedTools.value.length === 1) {
+    const t = toolOptions.find(o => o.name === selectedTools.value[0])
+    return t?.label || '工具'
+  }
+  return `工具(${selectedTools.value.length})`
+})
+
+const pickerPosition = computed(() => {
+  const btn = toolButtonRef.value
+  if (!btn) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+  const rect = btn.getBoundingClientRect()
+  return {
+    bottom: `${window.innerHeight - rect.top + 8}px`,
+    left: `${Math.min(rect.left, window.innerWidth - 240)}px`,
+  }
+})
+
+function openToolPicker() {
+  showToolPicker.value = true
+}
 
 interface PendingAttachment {
   id: number
@@ -290,6 +344,49 @@ function handlePaste(e: ClipboardEvent) {
           <Library class="w-[15px] h-[15px]" />
           <span>知识库</span>
         </button>
+        <div class="relative">
+          <button
+            ref="toolButtonRef"
+            class="tool-chip inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-text-3 text-[12px] cursor-pointer transition-colors duration-150 hover:bg-bg-hover hover:text-text bg-transparent border-0 font-sans disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="{ 'active': selectedTools.length > 0 }"
+            :disabled="props.disabled"
+            @click.stop="showToolPicker = !showToolPicker"
+            title="选择工具（PDF生成、网页抓取等）"
+          >
+            <Wrench class="w-[15px] h-[15px]" />
+            <span>{{ toolButtonLabel }}</span>
+          </button>
+          <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-150 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100"
+              leave-active-class="transition-all duration-100 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
+              <div v-if="showToolPicker" class="fixed inset-0" style="z-index: 2147483647; background: rgba(0,0,0,0.15)" @click="showToolPicker = false">
+                <div class="tool-picker absolute" :style="pickerPosition">
+                  <div class="w-[220px] rounded-xl border border-border p-2 backdrop-blur-sm"
+                    style="background: var(--color-bg-1, #ffffff); box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.1)">
+                    <div class="text-[11px] font-medium text-text-4 px-2 py-1.5">选择要启用的工具</div>
+                    <button v-for="tool in toolOptions" :key="tool.name"
+                      class="tool-option flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-100 border-0 text-left"
+                      :class="isToolSelected(tool.name) ? 'bg-accent-soft' : 'hover:bg-bg-hover'"
+                      @click.stop="toggleTool(tool.name)"
+                    >
+                      <span class="w-5 h-5 rounded-md grid place-items-center text-sm shrink-0" :class="isToolSelected(tool.name) ? 'bg-accent text-bg' : 'bg-bg-3 text-text-4'">
+                        <Check v-if="isToolSelected(tool.name)" class="w-3 h-3" />
+                      </span>
+                      <span class="text-base">{{ tool.icon }}</span>
+                      <div class="min-w-0">
+                        <p class="text-[12px] font-medium leading-tight" :class="isToolSelected(tool.name) ? 'text-accent' : 'text-text'">{{ tool.label }}</p>
+                        <p class="text-[10px] text-text-4 leading-tight">{{ tool.description }}</p>
+                      </div>
+                    </button>
+                    <div v-if="selectedTools.length > 0" class="border-t border-border/60 mt-1.5 pt-1.5 px-2">
+                      <button class="text-[11px] text-text-4 hover:text-danger transition-colors cursor-pointer bg-transparent border-0 p-0" @click.stop="selectedTools = []">清除选择</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </Teleport>
+        </div>
         <button class="tool-chip inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-text-3 text-[12px] cursor-pointer transition-colors duration-150 hover:bg-bg-hover hover:text-text bg-transparent border-0 font-sans disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="props.disabled"
           title="语音输入"

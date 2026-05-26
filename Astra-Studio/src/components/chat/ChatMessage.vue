@@ -1,7 +1,7 @@
-﻿
 <script setup lang="ts">
-
+/* 聊天核心组件 - 消息气泡 */
 import AttachCard from './AttachCard.vue'
+import PdfDownloadCard from './PdfDownloadCard.vue'
 import { Library } from 'lucide-vue-next'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import { debug, error } from '../../utils/logger'
@@ -60,6 +60,122 @@ const thinkingParagraphs = computed(() => {
 const hasContent = () => !!props.content?.trim()
 const hasAnyResponse = () => !!props.thinkingContent?.trim() || !!props.content?.trim()
 const hasAttachments = () => (props.attachments?.length ?? 0) > 0
+
+interface PdfDownloadInfo {
+  fileName: string
+  downloadUrl: string
+  fileSize?: string
+}
+
+function extractFileSize(text: string): string | undefined {
+  const sizeMatch = text.match(/\((\d+[\.\d]*\s*(KB|MB|GB))\)/i)
+  return sizeMatch ? sizeMatch[1] : undefined
+}
+
+function tryParseJsonPdfResult(content: string): PdfDownloadInfo | null {
+  try {
+    const jsonMatch = content.match(
+      /\{[\s\S]*?"success"\s*:\s*(true|1)[\s\S]*?"fileName"\s*:\s*"[^"]+"[\s\S]*?"downloadUrl"\s*:\s*"[^"]+"[\s\S]*?\}/
+    )
+    if (!jsonMatch) return null
+
+    const parsed = JSON.parse(jsonMatch[0])
+    if (parsed.fileName && parsed.downloadUrl) {
+      return {
+        fileName: parsed.fileName,
+        downloadUrl: parsed.downloadUrl,
+        fileSize: parsed.fileSizeBytes ? formatFileSize(parsed.fileSizeBytes) : undefined,
+      }
+    }
+  } catch (e) {
+    debug('[PdfDetection] JSON parse failed:', e)
+  }
+  return null
+}
+
+function tryExtractFromDirectUrl(content: string, baseUrl: string): PdfDownloadInfo | null {
+  const urlPattern = /\/api\/tools\/pdfGeneratorTool\/download\?fileName=([^\s"'\)]+)/i
+  const urlMatch = content.match(urlPattern)
+  if (!urlMatch) return null
+
+  const encodedFileName = urlMatch[1]
+  let fileName = safeDecodeURIComponent(encodedFileName)
+
+  const namePattern = /(document_[^\s"']+\.pdf)/i
+  const nameMatch = content.match(namePattern)
+  if (nameMatch?.[1]) {
+    fileName = safeDecodeURIComponent(nameMatch[1])
+  }
+
+  return {
+    fileName: fileName || 'document.pdf',
+    downloadUrl: `${baseUrl}/tools/pdfGeneratorTool/download?fileName=${encodedFileName}`,
+    fileSize: extractFileSize(content),
+  }
+}
+
+function tryExtractFromKeywordsAndTools(content: string, baseUrl: string): PdfDownloadInfo | null {
+  const hasKeywords = content.includes('下载链接') || content.includes('download') || content.includes('PDF')
+  if (!hasKeywords || !content.includes('/api/tools/')) return null
+
+  const allUrls = content.match(/\/api\/tools\/pdfGeneratorTool\/download[^\s"']*/gi)
+  if (!allUrls?.length) return null
+
+  const url = allUrls[0]
+  const fileNameMatch = url.match(/fileName=([^&\s]+)/)
+  const fileName = fileNameMatch ? safeDecodeURIComponent(fileNameMatch[1]) : 'document.pdf'
+
+  return {
+    fileName,
+    downloadUrl: url.startsWith('http') ? url : `${baseUrl}${url.replace(/^\/api/, '')}`,
+  }
+}
+
+function tryExtractFromDocPattern(content: string, baseUrl: string): PdfDownloadInfo | null {
+  const pdfKeywords = ['PDF', 'pdf', '生成', 'generated', 'document_', '.pdf']
+  const hasPdfKeywords = pdfKeywords.some((kw) => content.includes(kw))
+  if (!hasPdfKeywords) return null
+
+  const docPattern = /(document_[a-zA-Z0-9_\-]+\.pdf)/i
+  const docMatch = content.match(docPattern)
+  if (!docMatch) return null
+
+  let fileName = safeDecodeURIComponent(docMatch[1])
+  const encodedFileName = encodeURIComponent(fileName)
+
+  return {
+    fileName,
+    downloadUrl: `${baseUrl}/tools/pdfGeneratorTool/download?fileName=${encodedFileName}`,
+    fileSize: extractFileSize(content),
+  }
+}
+
+function safeDecodeURIComponent(str: string): string {
+  try { return decodeURIComponent(str) } catch { return str }
+}
+
+const pdfResult = computed<PdfDownloadInfo | null>(() => {
+  if (props.role !== 'assistant' || !props.content) return null
+
+  const content = props.content.trim()
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8089/api').replace(/\/+$/, '')
+
+  return (
+    tryParseJsonPdfResult(content)
+    ?? tryExtractFromDirectUrl(content, baseUrl)
+    ?? tryExtractFromKeywordsAndTools(content, baseUrl)
+    ?? tryExtractFromDocPattern(content, baseUrl)
+    ?? null
+  )
+})
+
+const showPdfDownload = computed(() => pdfResult.value !== null)
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 function normalizeContent(text: string): string {
   if (!text) return ''
@@ -387,6 +503,12 @@ async function handleCopyClick(e: Event) {
         :file-name="att.fileName"
         :file-size="att.fileSize"
         :file-type="att.fileType"
+      />
+      <PdfDownloadCard
+        v-if="showPdfDownload && pdfResult"
+        :file-name="pdfResult.fileName"
+        :download-url="pdfResult.downloadUrl"
+        :file-size="pdfResult.fileSize"
       />
     </div>
     <div v-if="role === 'user'" class="msg-avatar w-[26px] h-[26px] shrink-0 rounded-md grid place-items-center text-xs bg-[oklch(70%_0.05_200)] text-bg font-semibold">L</div>

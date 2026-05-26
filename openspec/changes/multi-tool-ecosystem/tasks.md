@@ -1,38 +1,38 @@
 ## 1. 基础设施搭建
 
-- [ ] 1.1 创建 `service/tools/` 目录结构，包含 BaseToolService 接口和 ToolInfo DTO
-- [ ] 1.2 实现 ToolRegistry 单例类（饿汉式 + ConcurrentHashMap），包含注册、查询、注销方法
-- [ ] 1.3 添加 Maven 依赖到 pom.xml：Jsoup (1.15+)、Apache PDFBox (2.0+)、HttpClient (5.x)
-- [ ] 1.4 在 application.yaml 中添加工具配置段（tools.enabled、tools.default-timeout-ms、tools.max-concurrent-executions）
-- [ ] 1.5 编写 ToolRegistry 单元测试：验证单例性、线程安全、并发注册/注销
-- [ ] 1.6 实现 ToolRegistry 自动发现机制（Spring BeanPostProcessor 扫描 @Tool 注解的 @Component）
+- [x] 1.1 创建 `service/tools/` 目录结构，包含 BaseToolService 接口和 ToolInfo DTO
+- [x] 1.2 实现 ToolRegistry 单例类（饿汉式 + ConcurrentHashMap），包含注册、查询、注销方法
+- [x] 1.3 添加 Maven 依赖到 pom.xml：Jsoup (1.15+)、Apache PDFBox (2.0+)、HttpClient (5.x)
+- [x] 1.4 在 application.yaml 中添加工具配置段（tools.enabled、tools.default-timeout-ms、tools.max-concurrent-executions）
+- [x] 1.5 编写 ToolRegistry 单元测试：验证单例性、线程安全、并发注册/注销
+- [x] 1.6 实现 ToolRegistry 自动发现机制（Spring BeanPostProcessor 扫描 @Tool 注解的 @Component）
 
 ## 2. 核心工具开发 - 网络工具集
 
-- [ ] 2.1 实现 WebSearchTool 类，使用 @Tool 注解标注 search() 方法
-- [ ] 2.2 封装搜索引擎 API 调用逻辑（支持 Google Custom Search / Bing API / SerpAPI）
-- [ ] 2.3 实现 SearchResult 数据类（title, url, snippet, source）
-- [ ] 2.4 添加搜索超时处理（默认 10 秒）和重试机制（最多 2 次）
-- [ ] 2.5 实现 WebScraperTool 类，基于 Jsoup 实现 scrape() 方法
-- [ ] 2.6 支持自定义 CSS 选择器提取特定 DOM 内容
-- [ ] 2.7 实现 URL 合法性校验（正则表达式或 java.net.URL 解析）
-- [ ] 2.8 处理反爬虫机制（User-Agent 轮换、请求间隔控制）
-- [ ] 2.9 编写 WebSearchTool 和 WebScraperTool 的集成测试（Mock HTTP Server）
+- [x] 2.1 实现 WebSearchTool 类，使用 @Tool 注解标注 search() 方法
+- [x] 2.2 封装搜索引擎 API 调用逻辑（支持 Google Custom Search / Bing API / SerpAPI）
+- [x] 2.3 实现 SearchResult 数据类（title, url, snippet, source）
+- [x] 2.4 添加搜索超时处理（默认 10 秒）和重试机制（最多 2 次）
+- [x] 2.5 实现 WebScraperTool 类，基于 Jsoup 实现 scrape() 方法
+- [x] 2.6 支持自定义 CSS 选择器提取特定 DOM 内容
+- [x] 2.7 实现 URL 合法性校验（正则表达式或 java.net.URL 解析）
+- [x] 2.8 处理反爬虫机制（User-Agent 轮换、请求间隔控制）
+- [x] 2.9 编写 WebSearchTool 和 WebScraperTool 的集成测试（Mock HTTP Server）
 
 ## 3. 核心工具开发 - 文档处理工具
 
-- [ ] 3.1 实现 PdfGeneratorTool 类，提供 generateFromMarkdown() 方法
-- [ ] 3.2 实现 PdfOptions 配置类（pageSize, margin, fontFamily, headerFooter, watermark）
-- [ ] 3.3 集成中文字体支持（SimSun / Microsoft YaHei），确保无乱码
-- [ ] 3.4 实现大文档自动分页和目录生成功能（>50 页时触发）
-- [ ] 3.5 定义 ImageAnalyzerTool 接口签名（预留实现），抛出 UnsupportedOperationException
-- [ ] 3.6 定义 ImageAnalysisResult 返回值结构（caption, objects, text, confidence）
-- [ ] 3.7 定义 CodeExecutorTool 接口签名（预留实现），抛出 UnsupportedOperationException
-- [ ] 3.8 定义 ExecutionResult 返回值结构（stdout, stderr, exitCode, durationMs）
-- [ ] 3.9 定义 DataProcessorTool 接口签名（预留实现），抛出 UnsupportedOperationException
-- [ ] 3.10 定义 ProcessingResult 返回值结构（data, statistics, warnings）
+- [x] 3.1 实现 PdfGeneratorTool 类，提供 generateFromMarkdown() 方法
+- [x] 3.2 实现 PdfOptions 配置类（pageSize, margin, fontFamily, headerFooter, watermark）
+- [x] 3.3 集成中文字体支持（SimSun / Microsoft YaHei），确保无乱码
+- [x] 3.4 实现大文档自动分页和目录生成功能（>50 页时触发）
+- [x] 3.5 定义 ImageAnalyzerTool 接口签名（预留实现），抛出 UnsupportedOperationException
+- [x] 3.6 定义 ImageAnalysisResult 返回值结构（caption, objects, text, confidence）
+- [x] 3.7 定义 CodeExecutorTool 接口签名（预留实现），抛出 UnsupportedOperationException
+- [x] 3.8 定义 ExecutionResult 返回值结构（stdout, stderr, exitCode, durationMs）
+- [x] 3.9 定义 DataProcessorTool 接口签名（预留实现），抛出 UnsupportedOperationException
+- [x] 3.10 定义 ProcessingResult 返回值结构（data, statistics, warnings）
 
-## 4. 图片搜索 MCP 服务端
+## 4. 图片搜索 MCP 服务端（已跳过 - 按用户要求暂不实现）
 
 - [ ] 4.1 创建 `image-search-mcp` Maven 子模块（独立 pom.xml，spring-boot-starter 依赖）
 - [ ] 4.2 实现 ImageSearchMcpApplication 启动类（排除主应用 DataSource/JPA 自动配置）
@@ -49,13 +49,13 @@
 
 ## 5. 工具集成与系统改造
 
-- [ ] 5.1 修改 AiCodeHelperServiceFactory.buildService() 方法，注入 ToolRegistry.getAllTools()
-- [ ] 5.2 添加 `tools.enabled` 开关控制（false 时跳过工具注入，保持向后兼容）
-- [ ] 5.3 扩展 McpConfig.java，新增 imageSearchMcpProvider() Bean（条件性创建）
-- [ ] 5.4 可选：在 ChatService 中添加工具调用状态 SSE 通知（tool_call_start/end/error 事件）
-- [ ] 5.5 创建 ToolController REST API（GET /api/tools, GET /api/tools/{name}, POST /api/tools/{name}/test）
-- [ ] 5.6 实现工具调用链路追踪（MDC 结构化日志、性能指标采集、异常堆栈脱敏）
-- [ ] 5.7 更新 application.yaml 示例文件，添加所有新配置项的注释说明
+- [x] 5.1 修改 AiCodeHelperServiceFactory.buildService() 方法，注入 ToolRegistry.getAllTools()
+- [x] 5.2 添加 `tools.enabled` 开关控制（false 时跳过工具注入，保持向后兼容）
+- [x] 5.3 扩展 McpConfig.java，新增 imageSearchMcpProvider() Bean（条件性创建）
+- [x] 5.4 可选：在 ChatService 中添加工具调用状态 SSE 通知（tool_call_start/end/error 事件）
+- [x] 5.5 创建 ToolController REST API（GET /api/tools, GET /api/tools/{name}, POST /api/tools/{name}/test）
+- [x] 5.6 实现工具调用链路追踪（MDC 结构化日志、性能指标采集、异常堆栈脱敏）
+- [x] 5.7 更新 application.yaml 示例文件，添加所有新配置项的注释说明
 
 ## 6. 测试与文档
 

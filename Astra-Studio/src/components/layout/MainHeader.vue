@@ -1,5 +1,5 @@
-// 布局组件 - 顶部导航栏
 <script setup lang="ts">
+/* 布局组件 - 顶部导航栏 */
 import { Share2, History, MoreHorizontal, ChevronDown, Pencil, Check, Link2, Copy, Download, QrCode, Clock, Trash2, RotateCcw, Pin, MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
 import { ref, inject, onMounted, onUnmounted, type Ref } from 'vue'
 
@@ -22,9 +22,10 @@ const currentTitle = inject<Ref<string>>('currentTitle')
 // 模型列表：value=API名称（传给后端），name=显示名称（UI展示）
 const models = [
   { value: 'auto', name: 'auto', desc: '智能识别任务类型，自动选择最优模型', tag: '推荐', icon: 'sparkles' },
-  { value: 'glm-5', name: 'GLM-5', desc: '通用对话、多轮交互', tag: '默认' },
+  { value: 'glm-5.1', name: 'GLM-5.1', desc: '通用对话、多轮交互', tag: '默认' },
   { value: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: '代码生成、逻辑推理', tag: '' },
   { value: 'qwen3.6-flash-2026-04-16', name: 'Qwen 3.6 Flash', desc: '中文理解、文本生成', tag: '' },
+  { value: 'qwen3.7-max-2026-05-17', name: 'Qwen 3.7 Max', desc: '复杂推理、长文本处理', tag: '' },
 ]
 
 function selectModel(model: typeof models[0]) {

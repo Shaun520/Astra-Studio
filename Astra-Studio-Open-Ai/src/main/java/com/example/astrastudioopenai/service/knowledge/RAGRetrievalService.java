@@ -1,5 +1,6 @@
 package com.example.astrastudioopenai.service.knowledge;
 
+import com.example.astrastudioopenai.common.utils.FileTypes;
 import com.example.astrastudioopenai.entity.DocumentChunkEntity;
 import com.example.astrastudioopenai.repository.DocumentChunkRepository;
 import com.example.astrastudioopenai.dto.response.RetrievedChunk;
@@ -26,6 +27,7 @@ public class RAGRetrievalService {
 
     private final EmbeddingModel embeddingModel;
     private final DocumentChunkRepository chunkRepo;
+    private final MultimodalEmbeddingService multimodalEmbeddingService;
 
     @Value("${knowledge-base.rag.top-k:5}")
     private int topK;
@@ -41,9 +43,11 @@ public class RAGRetrievalService {
 
     private final ConcurrentHashMap<String, CachedResult> resultCache = new ConcurrentHashMap<>();
 
-    public RAGRetrievalService(EmbeddingModel embeddingModel, DocumentChunkRepository chunkRepo) {
+    public RAGRetrievalService(EmbeddingModel embeddingModel, DocumentChunkRepository chunkRepo,
+            MultimodalEmbeddingService multimodalEmbeddingService) {
         this.embeddingModel = embeddingModel;
         this.chunkRepo = chunkRepo;
+        this.multimodalEmbeddingService = multimodalEmbeddingService;
     }
 
     public List<RetrievedChunk> retrieve(String query) {
@@ -72,14 +76,62 @@ public class RAGRetrievalService {
     private List<RetrievedChunk> doRetrieve(String query) {
         Instant start = Instant.now();
 
-        Embedding queryEmbedding = embeddingModel.embed(query).content();
-        float[] vec = queryEmbedding.vector();
-        String vecStr = formatVector(vec);
+        List<DocumentChunkEntity> allResults = new java.util.ArrayList<>();
 
-        log.info("RAG query='{}' | vec_dim={} | vec_preview=[{},{}...]",
-                truncate(query, 50), vec.length,
-                vec.length > 0 ? String.format("%.6f", vec[0]) : "N/A",
-                vec.length > 1 ? String.format("%.6f", vec[1]) : "N/A");
+        Embedding queryEmbedding = embeddingModel.embed(query).content();
+        float[] textVec = queryEmbedding.vector();
+        String textVecStr = formatVector(textVec);
+
+        log.info("RAG query='{}' | text_vec_dim={} | vec_preview=[{},{}...]",
+                truncate(query, 50), textVec.length,
+                textVec.length > 0 ? String.format("%.6f", textVec[0]) : "N/A",
+                textVec.length > 1 ? String.format("%.6f", textVec[1]) : "N/A");
+
+        double maxDist = 1.0 - similarityThreshold;
+
+        List<DocumentChunkEntity> textResults = chunkRepo.findSimilarChunksByContentType("text", textVecStr, maxDist,
+                topK);
+        log.info("RAG text_path: maxDist={}, results={}", maxDist, textResults.size());
+
+        if (textResults.isEmpty()) {
+            List<DocumentChunkEntity> fallbackText = chunkRepo.findSimilarChunksByContentType("text", textVecStr, 1.0,
+                    topK);
+            if (!fallbackText.isEmpty()) {
+                log.warn("RAG text_path: no results at threshold {}, fallback: {} chunks", similarityThreshold,
+                        fallbackText.size());
+                textResults = fallbackText;
+            }
+        }
+        allResults.addAll(textResults);
+
+        if (multimodalEmbeddingService.isEnabled()) {
+            try {
+                float[] multimodalVec = multimodalEmbeddingService.embedText(query);
+                String multimodalVecStr = formatVector(multimodalVec);
+
+                log.info("RAG multimodal_path: vec_dim={}, vec_preview=[{},{}...]",
+                        multimodalVec.length,
+                        multimodalVec.length > 0 ? String.format("%.6f", multimodalVec[0]) : "N/A",
+                        multimodalVec.length > 1 ? String.format("%.6f", multimodalVec[1]) : "N/A");
+
+                List<DocumentChunkEntity> imageResults = chunkRepo.findSimilarChunksByContentType("image",
+                        multimodalVecStr, maxDist, topK);
+                log.info("RAG image_path: maxDist={}, results={}", maxDist, imageResults.size());
+
+                if (imageResults.isEmpty()) {
+                    List<DocumentChunkEntity> fallbackImage = chunkRepo.findSimilarChunksByContentType("image",
+                            multimodalVecStr, 1.0, topK);
+                    if (!fallbackImage.isEmpty()) {
+                        log.warn("RAG image_path: no results at threshold {}, fallback: {} chunks", similarityThreshold,
+                                fallbackImage.size());
+                        imageResults = fallbackImage;
+                    }
+                }
+                allResults.addAll(imageResults);
+            } catch (Exception e) {
+                log.warn("RAG multimodal_path failed, skipping image retrieval: {}", e.getMessage());
+            }
+        }
 
         if (log.isDebugEnabled()) {
             long totalChunks = chunkRepo.count();
@@ -87,32 +139,9 @@ public class RAGRetrievalService {
             long nonNullCount = chunkRepo.countNonNullEmbeddings();
             log.debug("RAG db_stats: total={}, non_null_embeddings={}, null_embeddings={}",
                     totalChunks, nonNullCount, nullCount);
-
-            if (nonNullCount == 0 && totalChunks > 0) {
-                log.error(
-                        "RAG CRITICAL: All {} embeddings are NULL! Documents need re-upload after fixing ETL pipeline.",
-                        totalChunks);
-                return List.of();
-            }
         }
 
-        double maxDist = 1.0 - similarityThreshold;
-        List<DocumentChunkEntity> rawResults = chunkRepo.findSimilarChunks(null, vecStr, maxDist, topK * 2);
-        log.info("RAG threshold_query: maxDist={}, results={}", maxDist, rawResults.size());
-
-        if (rawResults.isEmpty()) {
-            List<DocumentChunkEntity> fallbackResults = chunkRepo.findSimilarChunks(null, vecStr, 1.0, topK);
-            log.info("RAG fallback (no threshold): results={}", fallbackResults.size());
-            if (!fallbackResults.isEmpty()) {
-                log.warn("RAG no results at threshold {}, fallback: {} chunks",
-                        similarityThreshold, fallbackResults.size());
-                rawResults = fallbackResults;
-            } else {
-                log.warn("RAG returned 0 chunks even without threshold!");
-            }
-        }
-
-        List<RetrievedChunk> results = rawResults.stream()
+        List<RetrievedChunk> results = allResults.stream()
                 .filter(chunk -> chunk.getContent() != null)
                 .limit(topK)
                 .map(entity -> {
@@ -125,9 +154,11 @@ public class RAGRetrievalService {
                 })
                 .collect(Collectors.toList());
 
-        log.info("RAG retrieved {} chunks in {}ms for query='{}'", results.size(),
-                Duration.between(start, Instant.now()).toMillis(),
-                truncate(query, 50));
+        log.info("RAG retrieved {} chunks in {}ms for query='{}' (text={}, image={})",
+                results.size(), Duration.between(start, Instant.now()).toMillis(),
+                truncate(query, 50),
+                textResults.size(),
+                allResults.size() - textResults.size());
         return results;
     }
 
@@ -137,7 +168,14 @@ public class RAGRetrievalService {
         StringBuilder sb = new StringBuilder("\n\n--- 知识库参考 ---\n");
         for (int i = 0; i < chunks.size(); i++) {
             RetrievedChunk c = chunks.get(i);
-            sb.append(String.format("[%d] 文档: %s\n%s\n\n", i + 1, c.getDocumentName(), c.getContent()));
+            String docName = c.getDocumentName();
+            boolean isImage = FileTypes.isImageFile(docName);
+
+            if (isImage) {
+                sb.append(String.format("[%d] %s\n\n", i + 1, c.getContent()));
+            } else {
+                sb.append(String.format("[%d] 文档: %s\n%s\n\n", i + 1, docName, c.getContent()));
+            }
         }
         sb.append("--- 参考结束 ---");
         return sb.toString();

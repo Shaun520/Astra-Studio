@@ -10,6 +10,7 @@ export interface KnowledgeDocument {
   errorMessage?: string
   createdAt: string
   updatedAt: string
+  contentType?: string
 }
 
 export interface Page<T> {

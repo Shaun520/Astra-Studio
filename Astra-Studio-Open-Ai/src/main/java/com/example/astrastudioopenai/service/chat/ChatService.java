@@ -28,6 +28,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -71,8 +75,15 @@ public class ChatService {
     public SseEmitter streamChat(String memoryId, String text, List<String> files,
             boolean deepThink, boolean webSearch, String modelName,
             boolean knowledgeBase) {
-        log.info("memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}",
-                memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase);
+        return streamChat(memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase, null);
+    }
+
+    public SseEmitter streamChat(String memoryId, String text, List<String> files,
+            boolean deepThink, boolean webSearch, String modelName,
+            boolean knowledgeBase, List<String> selectedTools) {
+        log.info(
+                "memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}",
+                memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase, selectedTools);
 
         try {
             if (!conversationQueryService.conversationExists(memoryId)) {
@@ -103,60 +114,80 @@ public class ChatService {
                         String.format("%.2f", routeResult.confidence()),
                         routeResult.reason());
             } else {
-                aiServiceFactory.getService(deepThink, webSearch, modelName, knowledgeBase);
+                aiServiceFactory.getService(deepThink, webSearch, modelName, knowledgeBase, selectedTools);
             }
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Unsupported model: " + modelName
-                    + ". Allowed models: glm-5, deepseek-v4-flash, qwen3.6-flash-2026-04-16, auto");
+                    + ". Allowed models: glm-5.1, deepseek-v4-flash, qwen3.6-flash-2026-04-16, qwen3.7-max-2026-05-17, auto");
         }
 
         SseEmitter emitter = new SseEmitter(sseTimeoutMs);
         final boolean[] connectionClosed = { false };
+        final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledFuture<?> heartbeatFuture = null;
 
-        List<String> fileList = files == null ? Collections.emptyList()
-                : files.stream()
-                        .filter(url -> url != null && !url.isBlank())
-                        .map(String::trim)
-                        .toList();
-
-        String userMessageText = MultipartUserMessageBuilder.buildText(text, fileList);
-        final String finalResolvedModelName = resolvedModelName;
-        final AutoRouteResult finalRouteResult = routeResult;
-        final ClassificationResult finalClassificationResult = classificationResult;
-
-        streamExecutor.execute(() -> {
-            try {
-                log.info("🚀 Starting TokenStream for memoryId: {}", memoryId);
-
-                if (persistenceService != null) {
-                    persistenceService.saveUserMessage(memoryId, userMessageText);
+        try {
+            heartbeatFuture = heartbeatExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    if (!connectionClosed[0]) {
+                        emitter.send(SseEmitter.event().name("heartbeat").data("{\"type\":\"heartbeat\"}"));
+                        log.debug("💓 SSE heartbeat sent");
+                    }
+                } catch (Exception e) {
+                    log.debug("Heartbeat failed (connection likely closed): {}", e.getMessage());
                 }
+            }, 15, 15, TimeUnit.SECONDS);
 
-                sendRoutingInfo(emitter, finalResolvedModelName, finalRouteResult, connectionClosed);
+            List<String> fileList = files == null ? Collections.emptyList()
+                    : files.stream()
+                            .filter(url -> url != null && !url.isBlank())
+                            .map(String::trim)
+                            .toList();
 
-                AiCodeHelperService selectedService = aiServiceFactory.getService(deepThink, webSearch,
-                        finalResolvedModelName, knowledgeBase);
-                log.info("🤖 AI service config: deepThink={}, webSearch={}, model={}, knowledgeBase={}, autoRoute={}",
-                        deepThink, webSearch, finalResolvedModelName, knowledgeBase,
-                        finalRouteResult != null && finalRouteResult.isAutoRouted());
+            String userMessageText = MultipartUserMessageBuilder.buildText(text, fileList);
+            final String finalResolvedModelName = resolvedModelName;
+            final AutoRouteResult finalRouteResult = routeResult;
+            final ClassificationResult finalClassificationResult = classificationResult;
 
-                if (finalRouteResult != null) {
-                    statsService.recordRouting(finalRouteResult, finalClassificationResult);
+            streamExecutor.execute(() -> {
+                try {
+                    log.info("🚀 Starting TokenStream for memoryId: {}", memoryId);
+
+                    if (persistenceService != null) {
+                        persistenceService.saveUserMessage(memoryId, userMessageText);
+                    }
+
+                    sendRoutingInfo(emitter, finalResolvedModelName, finalRouteResult, connectionClosed);
+
+                    AiCodeHelperService selectedService = aiServiceFactory.getService(deepThink, webSearch,
+                            finalResolvedModelName, knowledgeBase, selectedTools);
+                    log.info(
+                            "🤖 AI service config: deepThink={}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, autoRoute={}",
+                            deepThink, webSearch, finalResolvedModelName, knowledgeBase, selectedTools,
+                            finalRouteResult != null && finalRouteResult.isAutoRouted());
+
+                    if (finalRouteResult != null) {
+                        statsService.recordRouting(finalRouteResult, finalClassificationResult);
+                    }
+
+                    dev.langchain4j.service.TokenStream tokenStream = selectedService.chatWithStream(memoryId,
+                            userMessageText);
+
+                    subscribeTokenStream(tokenStream, emitter, connectionClosed,
+                            knowledgeBase ? text : null, memoryId, userMessageText, finalResolvedModelName);
+
+                } catch (Exception e) {
+                    log.error("❌ Error in streaming chat", e);
+                    handleStreamingError(emitter, e, connectionClosed);
                 }
+            });
 
-                dev.langchain4j.service.TokenStream tokenStream = selectedService.chatWithStream(memoryId,
-                        userMessageText);
+            setupEmitterCallbacks(emitter, connectionClosed, heartbeatExecutor, heartbeatFuture);
+        } catch (Exception e) {
+            stopHeartbeat(heartbeatExecutor, heartbeatFuture);
+            throw e;
+        }
 
-                subscribeTokenStream(tokenStream, emitter, connectionClosed,
-                        knowledgeBase ? text : null, memoryId, userMessageText, finalResolvedModelName);
-
-            } catch (Exception e) {
-                log.error("❌ Error in streaming chat", e);
-                handleStreamingError(emitter, e, connectionClosed);
-            }
-        });
-
-        setupEmitterCallbacks(emitter, connectionClosed);
         return emitter;
     }
 
@@ -356,22 +387,36 @@ public class ChatService {
         }
     }
 
-    private void setupEmitterCallbacks(SseEmitter emitter, boolean[] connectionClosed) {
+    private void setupEmitterCallbacks(SseEmitter emitter, boolean[] connectionClosed,
+            ScheduledExecutorService heartbeatExecutor, ScheduledFuture<?> heartbeatFuture) {
         emitter.onCompletion(() -> {
             log.info("🔒 SSE connection completed");
             connectionClosed[0] = true;
+            stopHeartbeat(heartbeatExecutor, heartbeatFuture);
         });
 
         emitter.onTimeout(() -> {
             log.warn("⏰ SSE connection timed out");
             connectionClosed[0] = true;
+            stopHeartbeat(heartbeatExecutor, heartbeatFuture);
             emitter.complete();
         });
 
         emitter.onError((ex) -> {
             log.debug("⚠️ SSE connection error (client disconnected): {}", ex.getMessage());
             connectionClosed[0] = true;
+            stopHeartbeat(heartbeatExecutor, heartbeatFuture);
         });
+    }
+
+    private void stopHeartbeat(ScheduledExecutorService executor, ScheduledFuture<?> future) {
+        if (future != null && !future.isCancelled()) {
+            future.cancel(false);
+        }
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdownNow();
+        }
+        log.debug("💓 Heartbeat stopped");
     }
 
     private String extractIntentFromReason(String reason) {

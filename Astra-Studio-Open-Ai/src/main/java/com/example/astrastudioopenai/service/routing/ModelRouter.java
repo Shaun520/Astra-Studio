@@ -11,7 +11,7 @@ public class ModelRouter {
         String targetModel = switch (classification.intent()) {
             case "CODE_GENERATION" -> "deepseek-v4-flash";
             case "CHINESE_QA" -> "qwen3.6-flash-2026-04-16";
-            default -> "glm-5";
+            default -> "glm-5.1";
         };
 
         return new RoutingDecision(targetModel, classification.confidence(), classification.reason());

@@ -61,6 +61,9 @@ export async function sendChatMessage(
   if (options.knowledgeBase) {
     formData.append('knowledgeBase', 'true')
   }
+  if (options.selectedTools?.length) {
+    options.selectedTools.forEach(tool => formData.append('selectedTools', tool))
+  }
   formData.append('model', options.model || 'auto')
 
   try {

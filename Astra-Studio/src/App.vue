@@ -148,7 +148,7 @@ async function handleRestoreConversation(memoryId: string) {
       role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
       author: msg.role === 'user' ? '林深' : 'Astra',
       time: formatTimestamp(msg.timestamp),
-      content: `<p>${msg.content}</p>`,
+      content: msg.content,
       thinkingContent: msg.thinkingContent || undefined,
       attachments: undefined,
     }))
@@ -235,7 +235,7 @@ function scrollToBottom() {
   })
 }
 
-async function handleSend(text: string, attachments?: { id: number; file: File; preview: string | null; type: 'image' | 'file' }[], deepThink: boolean = false, webSearch: boolean = false, isKnowledgeBase: boolean = false, model?: string) {
+async function handleSend(text: string, attachments?: { id: number; file: File; preview: string | null; type: 'image' | 'file' }[], deepThink: boolean = false, webSearch: boolean = false, isKnowledgeBase: boolean = false, model?: string, selectedToolsList?: string[]) {
   if (isLoading.value) return
   const finalModel = model || selectedModel.value
 
@@ -293,7 +293,7 @@ async function handleSend(text: string, attachments?: { id: number; file: File; 
     }
     
     sendChatMessage(
-      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, knowledgeBase: isKnowledgeBase, model: finalModel },
+      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, knowledgeBase: isKnowledgeBase, selectedTools: selectedToolsList, model: finalModel },
       {
         onThinking: (content) => {
           const msg = messages.value[assistantMsgIndex]

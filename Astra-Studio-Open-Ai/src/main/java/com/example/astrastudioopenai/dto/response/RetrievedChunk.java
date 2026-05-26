@@ -1,5 +1,6 @@
 package com.example.astrastudioopenai.dto.response;
 
+import com.example.astrastudioopenai.common.utils.FileTypes;
 import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.TextContent;
 import lombok.Data;
@@ -17,11 +18,14 @@ public class RetrievedChunk {
     public static Content toTextContent(RetrievedChunk chunk) {
         StringBuilder sb = new StringBuilder();
         if (chunk.getDocumentName() != null) {
-            sb.append("[文档:").append(chunk.getDocumentName());
-            if (chunk.getPageNumber() != null) {
-                sb.append(", 页码:").append(chunk.getPageNumber());
+            boolean isImage = FileTypes.isImageFile(chunk.getDocumentName());
+            if (!isImage) {
+                sb.append("[文档:").append(chunk.getDocumentName());
+                if (chunk.getPageNumber() != null) {
+                    sb.append(", 页码:").append(chunk.getPageNumber());
+                }
+                sb.append("] ");
             }
-            sb.append("] ");
         }
         sb.append(chunk.getContent() != null ? chunk.getContent() : chunk.getContentSnippet());
         return TextContent.from(sb.toString());

@@ -26,9 +26,11 @@ public class ChatController {
             @RequestParam(value = "files", required = false) List<String> files,
             @RequestParam(value = "deepThink", defaultValue = "false") boolean deepThink,
             @RequestParam(value = "webSearch", defaultValue = "false") boolean webSearch,
-            @RequestParam(value = "model", defaultValue = "glm-5") String modelName,
-            @RequestParam(value = "knowledgeBase", defaultValue = "false") boolean knowledgeBase) {
-        return chatService.streamChat(memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase);
+            @RequestParam(value = "model", defaultValue = "glm-5.1") String modelName,
+            @RequestParam(value = "knowledgeBase", defaultValue = "false") boolean knowledgeBase,
+            @RequestParam(value = "selectedTools", required = false) List<String> selectedTools) {
+        return chatService.streamChat(memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase,
+                selectedTools);
     }
 
     @GetMapping("/routing-stats")

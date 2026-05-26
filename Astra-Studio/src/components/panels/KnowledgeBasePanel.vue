@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+/* 知识库面板组件 */
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { debug, error } from '../../utils/logger'
 import { useToast } from '../../composables/useToast'
 import { 
@@ -11,7 +12,8 @@ import {
   CheckCircle2, 
   ExternalLink,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Image as ImageIcon
 } from 'lucide-vue-next'
 import { 
   getKnowledgeDocuments, 
@@ -31,7 +33,49 @@ const totalPages = ref(0)
 const totalElements = ref(0)
 const pageSize = 10
 
+// 图片预览相关状态
+const selectedFile = ref<File | null>(null)
+const imagePreviewUrl = ref<string | null>(null)
+const imageDimensions = ref<{ width: number; height: number } | null>(null)
+const showImageWarning = ref(false)
+const showImageError = ref(false)
+
 let pollInterval: number | null = null
+
+const isImageFile = (fileName: string): boolean => {
+  const lowerName = fileName.toLowerCase()
+  return lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') ||
+         lowerName.endsWith('.png') || lowerName.endsWith('.webp')
+}
+
+const getFileIcon = (contentType?: string) => {
+  if (contentType === 'image' || (contentType === undefined && isImageFile(documents.value.find(d => d.contentType === contentType)?.filename || ''))) {
+    return ImageIcon
+  }
+  return BookOpen
+}
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const loadImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      resolve({ width: img.width, height: img.height })
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = () => {
+      resolve({ width: 0, height: 0 })
+    }
+    img.src = URL.createObjectURL(file)
+  })
+}
 
 async function fetchDocuments() {
   loading.value = true
@@ -72,6 +116,38 @@ async function handleFileUpload(event: Event) {
   if (!target.files?.length) return
   
   const file = target.files[0]
+  
+  // 重置状态
+  showImageWarning.value = false
+  showImageError.value = false
+  selectedFile.value = null
+  imagePreviewUrl.value = null
+  imageDimensions.value = null
+  
+  // 检查是否为图片文件
+  if (isImageFile(file.name)) {
+    // 文件大小校验（5MB限制）
+    if (file.size > 5 * 1024 * 1024) {
+      showImageError.value = true
+      toast.error('图片文件过大，请选择小于 5MB 的图片')
+      target.value = ''
+      return
+    }
+    
+    // 设置图片预览
+    selectedFile.value = file
+    imagePreviewUrl.value = URL.createObjectURL(file)
+    
+    // 加载图片尺寸并检查分辨率
+    const dims = await loadImageDimensions(file)
+    imageDimensions.value = dims
+    
+    // 分辨率警告（<800x600）
+    if (dims.width > 0 && dims.height > 0 && (dims.width < 800 || dims.height < 600)) {
+      showImageWarning.value = true
+    }
+  }
+  
   uploading.value = true
   
   try {
@@ -82,6 +158,13 @@ async function handleFileUpload(event: Event) {
       await uploadKnowledgeDocument(results[0].url, file.name)
       // 3. 刷新列表
       await fetchDocuments()
+      
+      // 清理预览 URL
+      if (imagePreviewUrl.value) {
+        URL.revokeObjectURL(imagePreviewUrl.value)
+        imagePreviewUrl.value = null
+      }
+      selectedFile.value = null
     }
   } catch (e) {
     error('Upload failed:', e)
@@ -155,8 +238,42 @@ onUnmounted(() => {
         <Upload v-if="!uploading" class="w-3.5 h-3.5" />
         <Loader2 v-else class="w-3.5 h-3.5 animate-spin" />
         <span>{{ uploading ? '上传中...' : '上传文档' }}</span>
-        <input type="file" class="hidden" @change="handleFileUpload" accept=".pdf,.doc,.docx,.txt,.md" :disabled="uploading" />
+        <input type="file" class="hidden" @change="handleFileUpload" accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.webp" :disabled="uploading" />
       </label>
+
+      <!-- 图片预览和校验提示 -->
+      <div v-if="imagePreviewUrl && !uploading" class="image-preview-container mt-3 p-3 rounded-lg border border-border bg-bg-2/50">
+        <div class="flex gap-4">
+          <!-- 缩略图 -->
+          <div class="image-thumbnail flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-bg-2 border border-border flex items-center justify-center">
+            <img v-if="imagePreviewUrl" :src="imagePreviewUrl" alt="预览" class="max-w-full max-h-full object-contain" />
+            <ImageIcon v-else class="w-8 h-8 text-text-3 opacity-20" />
+          </div>
+          
+          <!-- 文件信息 -->
+          <div class="flex-1 min-w-0 space-y-2">
+            <div class="flex items-center gap-2">
+              <ImageIcon class="w-4 h-4 text-accent flex-shrink-0" />
+              <span class="text-[12px] font-medium text-text truncate">{{ selectedFile?.name }}</span>
+            </div>
+            
+            <div class="flex items-center gap-3 text-[11px] text-text-3 font-mono">
+              <span>{{ formatFileSize(selectedFile?.size || 0) }}</span>
+              <span v-if="imageDimensions?.width">{{ imageDimensions.width }} × {{ imageDimensions.height }}</span>
+            </div>
+            
+            <!-- 分辨率警告 -->
+            <div v-if="showImageWarning" class="p-2 rounded bg-warning/10 text-warning text-[11px] leading-relaxed border border-warning/20">
+              ⚠️ 图片分辨率较低（{{ imageDimensions?.width }}×{{ imageDimensions?.height }}），可能影响向量化效果，建议上传 ≥800×600 的图片
+            </div>
+            
+            <!-- 文件大小错误 -->
+            <div v-if="showImageError" class="p-2 rounded bg-danger/10 text-danger text-[11px] leading-relaxed border border-danger/20">
+              ❌ 图片文件过大，限制 5MB
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="doc-list flex-1 overflow-y-auto min-h-0 space-y-2 pr-1 custom-scrollbar">
@@ -174,6 +291,10 @@ onUnmounted(() => {
         <div class="flex items-start justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
+              <!-- 文件类型图标 -->
+              <component :is="getFileIcon(doc.contentType)" 
+                        :class="{ 'w-3.5 h-3.5 text-accent': doc.contentType === 'image', 'w-3.5 h-3.5 text-text-2': doc.contentType !== 'image' }" />
+              
               <span class="text-[13px] font-medium text-text truncate" :title="doc.filename">{{ doc.filename }}</span>
               <div class="status-badge flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" :class="{
                 'bg-warning/10 text-warning': doc.status === 'PROCESSING',
@@ -184,6 +305,10 @@ onUnmounted(() => {
                 <CheckCircle2 v-else-if="doc.status === 'READY'" class="w-2.5 h-2.5" />
                 <AlertCircle v-else class="w-2.5 h-2.5" />
                 {{ doc.status }}
+                
+                <!-- 图片文档特殊状态标识 -->
+                <span v-if="doc.contentType === 'image' && doc.status === 'READY'" class="ml-1 opacity-70">1向量</span>
+                <span v-else-if="doc.contentType === 'image' && doc.status === 'PROCESSING'" class="ml-1 opacity-70">向量化中</span>
               </div>
             </div>
             <div class="flex items-center gap-3 text-[11px] text-text-3 font-mono">
