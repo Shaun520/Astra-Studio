@@ -28,9 +28,13 @@ public class ChatController {
             @RequestParam(value = "webSearch", defaultValue = "false") boolean webSearch,
             @RequestParam(value = "model", defaultValue = "glm-5.1") String modelName,
             @RequestParam(value = "knowledgeBase", defaultValue = "false") boolean knowledgeBase,
-            @RequestParam(value = "selectedTools", required = false) List<String> selectedTools) {
+            @RequestParam(value = "selectedTools", required = false) List<String> selectedTools,
+            @RequestParam(value = "temperature", defaultValue = "0.7") Double temperature,
+            @RequestParam(value = "maxTokens", defaultValue = "4096") Integer maxTokens,
+            @RequestParam(value = "topP", defaultValue = "0.95") Double topP,
+            @RequestParam(value = "systemPrompt", required = false) String systemPrompt) {
         return chatService.streamChat(memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase,
-                selectedTools);
+                selectedTools, temperature, maxTokens, topP, systemPrompt);
     }
 
     @GetMapping("/routing-stats")

@@ -10,7 +10,8 @@ import {
   Loader2, 
   AlertCircle, 
   CheckCircle2, 
-  ExternalLink,
+  Eye,
+  X,
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon
@@ -109,6 +110,12 @@ async function handleDelete(id: number) {
     error('Delete failed:', e)
     toast.fromError(e, '删除失败')
   }
+}
+
+const previewImage = ref<{ url: string; name: string } | null>(null)
+
+function openImagePreview(url: string) {
+  previewImage.value = { url, name: url.split('/').pop() || '预览' }
 }
 
 async function handleFileUpload(event: Event) {
@@ -295,8 +302,8 @@ onUnmounted(() => {
               <component :is="getFileIcon(doc.contentType)" 
                         :class="{ 'w-3.5 h-3.5 text-accent': doc.contentType === 'image', 'w-3.5 h-3.5 text-text-2': doc.contentType !== 'image' }" />
               
-              <span class="text-[13px] font-medium text-text truncate" :title="doc.filename">{{ doc.filename }}</span>
-              <div class="status-badge flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" :class="{
+              <span class="text-[13px] font-medium text-text truncate flex-1 min-w-0" :title="doc.filename">{{ doc.filename }}</span>
+              <div class="status-badge flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0" :class="{
                 'bg-warning/10 text-warning': doc.status === 'PROCESSING',
                 'bg-success/10 text-success': doc.status === 'READY',
                 'bg-danger/10 text-danger': doc.status === 'FAILED'
@@ -310,6 +317,14 @@ onUnmounted(() => {
                 <span v-if="doc.contentType === 'image' && doc.status === 'READY'" class="ml-1 opacity-70">1向量</span>
                 <span v-else-if="doc.contentType === 'image' && doc.status === 'PROCESSING'" class="ml-1 opacity-70">向量化中</span>
               </div>
+
+              <!-- 图片文档预览按钮 -->
+              <button v-if="doc.contentType === 'image' && doc.fileUrl && doc.status === 'READY'"
+                      @click="previewImage = { url: doc.fileUrl, name: doc.filename }"
+                      class="p-1 rounded text-text-3 hover:text-accent hover:bg-accent/10 transition-colors flex-shrink-0"
+                      title="预览原图">
+                <Eye class="w-3 h-3" />
+              </button>
             </div>
             <div class="flex items-center gap-3 text-[11px] text-text-3 font-mono">
               <span>{{ formatDate(doc.createdAt) }}</span>
@@ -326,6 +341,30 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="previewImage" class="fixed inset-0 z-50 flex items-center justify-center" @click.self="previewImage = null" @keydown.esc="previewImage = null">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div class="relative z-10 max-w-[90vw] max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl border border-border bg-bg-1 animate-in fade-in zoom-in-95 duration-200">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-bg-2">
+            <span class="text-sm font-medium text-text truncate max-w-[300px]">{{ previewImage.name }}</span>
+            <button @click="previewImage = null" class="p-1 rounded-lg text-text-3 hover:text-text hover:bg-bg-hover transition-colors">
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+          <img :src="previewImage.url" :alt="previewImage.name"
+               class="max-w-[90vw] max-h-[75vh] object-contain bg-black/5"
+               loading="eager" />
+          <div class="px-4 py-2 border-t border-border bg-bg-2 flex items-center justify-between">
+            <a :href="previewImage.url" target="_blank" rel="noopener noreferrer"
+               class="text-xs text-accent hover:underline flex items-center gap-1">
+              <ExternalLink class="w-3 h-3" /> 在新窗口打开
+            </a>
+            <span class="text-[11px] text-text-4">按 ESC 关闭</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <div v-if="totalPages > 1" class="pagination flex items-center justify-center gap-4 mt-4 pt-4 border-t border-border">
       <button @click="page--; fetchDocuments()" :disabled="page === 0" class="p-1 rounded hover:bg-bg-2 disabled:opacity-20">

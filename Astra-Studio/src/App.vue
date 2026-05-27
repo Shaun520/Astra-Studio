@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, provide, onMounted } from 'vue'
+import { ref, reactive, nextTick, provide, onMounted, watch } from 'vue'
 import { debug, error } from './utils/logger'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import MainHeader from '@/components/layout/MainHeader.vue'
@@ -31,6 +31,18 @@ let abortController: AbortController | null = null
 const selectedModel = ref('auto')
 
 provide('selectedModel', selectedModel)
+
+const DEFAULT_CHAT_PARAMS = { temperature: 0.72, maxOutput: 4096, topP: 0.95, systemPrompt: '' }
+function loadChatParams() {
+  try {
+    const raw = localStorage.getItem('chat-params')
+    if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') return { ...DEFAULT_CHAT_PARAMS, ...parsed } }
+  } catch { }
+  return { ...DEFAULT_CHAT_PARAMS }
+}
+const chatParams = reactive(loadChatParams())
+provide('chatParams', chatParams)
+watch(chatParams, () => { try { localStorage.setItem('chat-params', JSON.stringify(chatParams)) } catch { } }, { deep: true })
 
 // ==================== 会话管理状态 ====================
 const currentSessionId = ref(generateSessionId())
@@ -293,7 +305,7 @@ async function handleSend(text: string, attachments?: { id: number; file: File; 
     }
     
     sendChatMessage(
-      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, knowledgeBase: isKnowledgeBase, selectedTools: selectedToolsList, model: finalModel },
+      { memoryId: currentSessionId.value, text, files: uploadedUrls, deepThink, webSearch, knowledgeBase: isKnowledgeBase, selectedTools: selectedToolsList, model: finalModel, temperature: chatParams.temperature, maxTokens: chatParams.maxOutput, topP: chatParams.topP, systemPrompt: chatParams.systemPrompt || undefined },
       {
         onThinking: (content) => {
           const msg = messages.value[assistantMsgIndex]

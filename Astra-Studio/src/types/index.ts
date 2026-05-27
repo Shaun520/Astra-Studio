@@ -74,6 +74,8 @@ export interface KnowledgeSource {
   document_name: string
   page_number: number | null
   score: number
+  sourceType?: 'text' | 'image'
+  metadata?: string
 }
 
 export type { ConversationItem, MessageItem, PageResult, CreateConversationRequest, UpdateTitleRequest } from './conversation'

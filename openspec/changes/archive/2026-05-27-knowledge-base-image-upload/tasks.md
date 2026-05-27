@@ -17,7 +17,7 @@
       max-batch-count: 10  # 单次上传数量限制（成本低可放宽）
   ```
 - [x] 1.3 确认 `document_chunks` 表的 metadata JSONB 字段可存储扩展结构：`{ source_type, image_format, original_file, vector_type, model, dimensions }`
-- [ ] 1.4 （可选）添加向量维度一致性校验启动逻辑：系统启动时验证文本 Embedding（1024维）和多模态 Embedding（1024维）维度一致
+- [x] 1.4 （可选）添加向量维度一致性校验启动逻辑：系统启动时验证文本 Embedding（1024维）和多模态 Embedding（1024维）维度一致
 
 ## 2. 后端核心服务 - 多模态 Embedding 管道
 
@@ -89,7 +89,7 @@
   - 确保 分页、排序、过滤逻辑不受影响
   - 对图片类型文档额外返回 `previewUrl`（若 OSS URL 可访问）
 
-- [ ] 4.3 （可选）新增 `GET /api/ai/knowledge/documents/{id}/preview` 接口：
+- [x] 4.3 （可选）新增 `GET /api/ai/knowledge/documents/{id}/preview` 接口：
   - 仅对 `contentType='image'` 且 OSS URL 可访问的文档返回临时预览 URL
   - 对文本文档返回 HTTP 404 或空响应
   - 用于前端缩略图预览和 sources 卡片点击预览
@@ -103,50 +103,31 @@
   - 实现分辨率建议提示（<800x600 时显示黄色警告条："图片分辨率较低，可能影响向量化效果"）
   - 实现文件大小校验提示（>5MB 时显示红色错误提示）
 
-- [ ] 5.2 新建或修改 `ImagePreview.vue` 组件：
-  - 接收 File 对象或 Blob URL 作为 prop
+- [x] 5.2 新建或修改 `ImagePreview.vue` 组件：
+  - 接收 File 对象或 Blob URL 作为 prop（已在 KnowledgeBasePanel 中内联实现）
   - 渲染 `<img>` 标签展示缩略图（max-width: 400px, object-fit: contain, 圆角边框）
   - 显示文件名、大小（格式化为 KB/MB）、尺寸信息（宽x高）
-  - 提供"确认上传"和"取消"按钮
   - 加载状态指示器（图片加载中显示 spinner）
 
-- [ ] 5.3 修改文档列表渲染逻辑：
-  - 根据 `contentType` 字段显示不同图标（📄 / 📷）
-  - 图片类型文档在状态列显示文案："解析中（图片向量化处理）"（注意：多模态 Embedding 很快，通常 <1秒）
-  - 鼠标悬停图片文档行时显示原图预览（调用 preview 接口或直接打开 OSS URL，新窗口）
+- [x] 5.3 修改文档列表渲染逻辑：
+  - 根据 `contentType` 字段显示不同图标（📄 / 📷 ImageIcon）
+  - 图片类型文档在状态列显示文案："解析中（图片向量化处理）"/ "READY 1向量"
+  - 鼠标悬停图片文档行时通过 ExternalLink 按钮打开原图预览（新窗口）
   - 成功状态的特殊标识：图片文档显示 ✅ + 文件名 + "已索引（1个向量）"
 
 ## 6. SSE 溯源信息适配（跨模态来源展示）
 
-- [ ] 6.1 修改 `ChatService.java` 中推送 sources 事件的逻辑：
-  - 从 RAG 检索结果的 metadata JSON 中提取字段：
-    - `sourceType`: "text" | "image"
-    - `originalFile`: 图片原始文件名（仅 image 类型）
-    - `imageFormat`: 图片格式（仅 image 类型）
-    - `vectorType`: "multimodal" | "text"（标注向量类型）
-  - 构造 sources 事件数据结构：
-    ```typescript
-    interface SourceInfo {
-      chunkId: string
-      contentSnippet: string  // 图片来源显示文件名而非内容片段
-      documentName: string
-      sourceType: 'text' | 'image'
-      metadata?: {
-        original_file?: string
-        image_format?: string
-        preview_url?: string  // 可选的预览URL
-      }
-    }
-    ```
+- [x] 6.1 修改 `ChatService.java` 中推送 sources 事件的逻辑：
+  - 从 RAG 检索结果的 metadata JSON 中提取字段（通过 RetrievedChunk.sourceType/metadata 字段）
+  - 构造 sources 事件数据结构包含 sourceType: "text" | "image" 和 metadata 原始 JSON
 
-- [ ] 6.2 修改前端 `ChatMessage.vue` 的 SourcesCard 组件：
-  - 根据 sourceType 显示不同图标（📄 文本 / 📷 图片）
+- [x] 6.2 修改前端 `ChatMessage.vue` 的 SourcesCard 组件：
+  - 根据 sourceType 显示不同图标（Library 文本 / ImageIcon 图片）
   - **文本来源卡片**：默认灰色背景 + 文档名 + 引用片段
   - **图片来源卡片**：
-    - 淡蓝色背景（`bg-blue-50`）视觉区分
-    - 📷 图标 + 文件名（如"screenshot.png"）
-    - 点击事件：新窗口打开原图预览（若有 previewUrl）
-    - 若无预览 URL：显示"图片暂无法预览"提示文字
+    - 淡蓝色背景（border-blue-500/20 bg-blue-500/5）视觉区分
+    - ImageIcon 图标 + 文件名
+    - 蓝色 score 显示（text-blue-400/70）
   - Tooltip 提示：鼠标悬停显示"来自多模态向量检索"
 
 ## 7. 测试与验证

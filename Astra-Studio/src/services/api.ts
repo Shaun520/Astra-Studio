@@ -178,6 +178,12 @@ export async function getKnowledgeDocumentStatus(id: number): Promise<Partial<Kn
   return response.json()
 }
 
+export async function getKnowledgeDocumentPreview(id: number): Promise<{ documentId: number, fileName: string, contentType: string, previewUrl: string, status: string }> {
+  const response = await fetch(`${API_BASE_URL}/knowledge/documents/${id}/preview`)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
+}
+
 export async function deleteKnowledgeDocument(id: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/knowledge/documents/${id}`, {
     method: 'DELETE'

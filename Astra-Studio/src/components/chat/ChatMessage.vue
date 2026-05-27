@@ -2,7 +2,7 @@
 /* 聊天核心组件 - 消息气泡 */
 import AttachCard from './AttachCard.vue'
 import PdfDownloadCard from './PdfDownloadCard.vue'
-import { Library } from 'lucide-vue-next'
+import { Library, Image as ImageIcon } from 'lucide-vue-next'
 import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import { debug, error } from '../../utils/logger'
 import { mdToHtml, renderThinkingMarkdown } from '../../utils/markdown'
@@ -34,6 +34,8 @@ interface Props {
     document_name: string
     page_number: number | null
     score: number
+    sourceType?: 'text' | 'image'
+    metadata?: string
   }>
 }
 
@@ -472,23 +474,30 @@ async function handleCopyClick(e: Event) {
           <div v-html="renderedContent"></div>
           <span v-if="isLoading" class="cursor inline-block w-[2px] h-[1em] bg-accent ml-[2px] align-middle"></span>
         </div>
-        <!-- <div v-if="sources && sources.length > 0 && role === 'assistant'" class="sources-area mt-3 px-4 py-3 rounded-xl border border-accent/20 bg-accent/5">
+        <div v-if="sources && sources.length > 0 && role === 'assistant'" class="sources-area mt-3 px-4 py-3 rounded-xl border border-accent/20 bg-accent/5">
           <div class="sources-header flex items-center gap-1.5 mb-2 text-[12px] font-medium text-accent">
             <Library class="w-[14px] h-[14px]" />
-            <span>鐭ヨ瘑搴撳弬鑰?({{ sources.length }})</span>
+            <span>知识库参考 ({{ sources.length }})</span>
           </div>
           <div class="sources-list flex flex-col gap-2">
             <div v-for="(src, idx) in sources.slice(0, 3)" :key="idx"
-              class="source-card rounded-lg border border-border/50 bg-bg-1/60 px-3 py-2 text-[12px] leading-relaxed">
+              class="source-card rounded-lg border px-3 py-2 text-[12px] leading-relaxed transition-all"
+              :class="src.sourceType === 'image'
+                ? 'border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:bg-blue-500/10'
+                : 'border-border/50 bg-bg-1/60 hover:border-accent/30 hover:bg-bg-hover'">
               <div class="source-meta flex items-center gap-2 mb-1">
-                <span class="source-doc font-medium text-text">{{ src.document_name || '鏈煡鏂囨。' }}</span>
+                <component :is="src.sourceType === 'image' ? ImageIcon : Library"
+                  :class="src.sourceType === 'image' ? 'w-[13px] h-[13px] text-blue-400' : 'w-[13px] h-[13px] text-text-2'" />
+                <span class="source-doc font-medium text-text" :title="src.document_name">{{ src.document_name || '未知文档' }}</span>
                 <span v-if="src.page_number" class="source-page text-text-4">P{{ src.page_number }}</span>
-                <span v-if="src.score" class="source-score ml-auto text-accent/70 tabular-nums font-mono">{{ (src.score * 100).toFixed(0) }}%</span>
+                <span v-if="src.score" class="source-score ml-auto tabular-nums font-mono"
+                  :class="src.sourceType === 'image' ? 'text-blue-400/70' : 'text-accent/70'">{{ (src.score * 100).toFixed(0) }}%</span>
               </div>
-              <p class="source-snippet text-text-3 line-clamp-2">{{ src.content_snippet }}</p>
+              <p class="source-snippet line-clamp-2"
+                :class="src.sourceType === 'image' ? 'text-text-2' : 'text-text-3'">{{ src.content_snippet }}</p>
             </div>
           </div>
-        </div> -->
+        </div>
       </div>
       <AttachCard
         v-for="(att, i) in attachments"

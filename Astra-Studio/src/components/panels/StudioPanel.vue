@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Cpu, SlidersHorizontal, Sparkles, Layers, ChevronDown, BookOpen } from 'lucide-vue-next'
+/* 工作空间面板组件 */
+import { ref, inject } from 'vue'
+import { SlidersHorizontal, Sparkles, Layers, BookOpen } from 'lucide-vue-next'
 import KnowledgeBasePanel from './KnowledgeBasePanel.vue'
 
 const activeTab = ref<'params' | 'knowledge'>('params')
-const temperature = ref(0.72)
-const maxOutput = ref(4096)
-const topP = ref(0.95)
-const systemPrompt = ref('你是一位编辑级视觉顾问，回答时保持克制、信息层级清晰，必要时用编号或对比说明，不堆砌形容词。')
-
-const modelTags = ['推理', '长上下文 · 200k', '多模态']
+const chatParams = inject<{ temperature: number; maxOutput: number; topP: number; systemPrompt: string }>('chatParams')!
 
 const recentAssets = [
   { type: 'image' as const, label: '图像', meta1: '1024²', meta2: '2s' },
@@ -42,51 +38,36 @@ const recentAssets = [
     <div v-if="activeTab === 'params'" class="params-content">
       <div class="studio-section py-[18px] px-5 border-b border-border last:border-b-0">
       <div class="studio-h text-[11px] text-text-3 uppercase tracking-[0.14em] mb-3 flex items-center gap-1.5 font-medium">
-        <Cpu class="w-3 h-3" />当前模型
-      </div>
-      <div class="model-card border border-border rounded-[10px] p-3 cursor-pointer transition-colors duration-200 hover:border-border-2">
-        <div class="model-row flex items-center gap-2">
-          <div class="model-name font-serif text-[17px] flex-1 tracking-tight"><em>Astra</em> Sage 4</div>
-          <ChevronDown class="model-chev w-3.5 h-3.5 text-text-3" />
-        </div>
-        <div class="model-tags flex gap-1.5 mt-2.5 flex-wrap">
-          <span v-for="tag in modelTags" :key="tag" class="model-tag text-[10.5px] px-1.5 py-[2px] rounded-[4px] bg-bg-2 text-text-2 border border-border">{{ tag }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="studio-section py-[18px] px-5 border-b border-border last:border-b-0">
-      <div class="studio-h text-[11px] text-text-3 uppercase tracking-[0.14em] mb-3 flex items-center gap-1.5 font-medium">
         <SlidersHorizontal class="w-3 h-3" />参数
       </div>
       <div class="param mb-3.5 last:mb-0">
         <div class="param-head flex justify-between items-baseline mb-2">
           <span class="param-name text-[12.5px] text-text-2">温度</span>
-          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ temperature.toFixed(2) }}</span>
+          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ (chatParams?.temperature ?? 0.72).toFixed(2) }}</span>
         </div>
-        <input type="range" v-model.number="temperature" min="0" max="2" step="0.01"
+        <input type="range" v-model.number="chatParams.temperature" min="0" max="2" step="0.01"
           class="slider w-full h-1 bg-bg-2 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-bg [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_var(--color-border-2)]"
-          :style="{ background: `linear-gradient(to right, var(--color-accent) ${temperature / 2 * 100}%, var(--color-bg-2) ${temperature / 2 * 100}%)` }"
+          :style="{ background: `linear-gradient(to right, var(--color-accent) ${(chatParams?.temperature ?? 0.72) / 2 * 100}%, var(--color-bg-2) ${(chatParams?.temperature ?? 0.72) / 2 * 100}%)` }"
         />
       </div>
       <div class="param mb-3.5 last:mb-0">
         <div class="param-head flex justify-between items-baseline mb-2">
           <span class="param-name text-[12.5px] text-text-2">最大输出</span>
-          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ maxOutput.toLocaleString() }}</span>
+          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ (chatParams?.maxOutput ?? 4096).toLocaleString() }}</span>
         </div>
-        <input type="range" v-model.number="maxOutput" min="256" max="8192" step="128"
+        <input type="range" v-model.number="chatParams.maxOutput" min="256" max="8192" step="128"
           class="slider w-full h-1 bg-bg-2 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-bg [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_var(--color-border-2)]"
-          :style="{ background: `linear-gradient(to right, var(--color-accent) ${(maxOutput - 256) / (8192 - 256) * 100}%, var(--color-bg-2) ${(maxOutput - 256) / (8192 - 256) * 100}%)` }"
+          :style="{ background: `linear-gradient(to right, var(--color-accent) ${((chatParams?.maxOutput ?? 4096) - 256) / (8192 - 256) * 100}%, var(--color-bg-2) ${((chatParams?.maxOutput ?? 4096) - 256) / (8192 - 256) * 100}%)` }"
         />
       </div>
       <div class="param mb-3.5 last:mb-0">
         <div class="param-head flex justify-between items-baseline mb-2">
           <span class="param-name text-[12.5px] text-text-2">Top-p</span>
-          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ topP.toFixed(2) }}</span>
+          <span class="param-val font-mono text-[11.5px] text-text tabular-nums">{{ (chatParams?.topP ?? 0.95).toFixed(2) }}</span>
         </div>
-        <input type="range" v-model.number="topP" min="0" max="1" step="0.01"
+        <input type="range" v-model.number="chatParams.topP" min="0" max="1" step="0.01"
           class="slider w-full h-1 bg-bg-2 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-bg [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_var(--color-border-2)]"
-          :style="{ background: `linear-gradient(to right, var(--color-accent) ${topP * 100}%, var(--color-bg-2) ${topP * 100}%)` }"
+          :style="{ background: `linear-gradient(to right, var(--color-accent) ${(chatParams?.topP ?? 0.95) * 100}%, var(--color-bg-2) ${(chatParams?.topP ?? 0.95) * 100}%)` }"
         />
       </div>
     </div>
@@ -96,8 +77,9 @@ const recentAssets = [
         <Sparkles class="w-3 h-3" />系统提示
       </div>
       <textarea
-        v-model="systemPrompt"
+        v-model="chatParams.systemPrompt"
         class="system-prompt border border-border rounded-lg px-3 py-2.5 text-[12.5px] text-text-2 leading-[1.55] bg-bg-input font-sans resize-none w-full h-24 focus:outline-none focus:border-accent-line"
+        placeholder="定义 AI 的角色、行为风格或回答约束，例如：&#10;你是一位专业的技术顾问，回答简洁准确，优先使用代码示例说明。"
       ></textarea>
     </div>
 
@@ -137,6 +119,10 @@ const recentAssets = [
 </template>
 
 <style scoped>
+.system-prompt::placeholder {
+  color: var(--color-text-4);
+  opacity: 1;
+}
 .recent-card.rc-image {
   background:
     radial-gradient(120% 80% at 25% 25%, oklch(82% 0.13 65 / 0.45), transparent 55%),

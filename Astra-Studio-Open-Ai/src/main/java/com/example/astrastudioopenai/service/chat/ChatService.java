@@ -81,9 +81,18 @@ public class ChatService {
     public SseEmitter streamChat(String memoryId, String text, List<String> files,
             boolean deepThink, boolean webSearch, String modelName,
             boolean knowledgeBase, List<String> selectedTools) {
+        return streamChat(memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase,
+                selectedTools, null, null, null, null);
+    }
+
+    public SseEmitter streamChat(String memoryId, String text, List<String> files,
+            boolean deepThink, boolean webSearch, String modelName,
+            boolean knowledgeBase, List<String> selectedTools,
+            Double temperature, Integer maxTokens, Double topP, String systemPrompt) {
         log.info(
-                "memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}",
-                memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase, selectedTools);
+                "memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, llmParams={}/{}/{}/{}",
+                memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase, selectedTools,
+                temperature, maxTokens, topP, systemPrompt != null ? systemPrompt.length() + "chars" : "null");
 
         try {
             if (!conversationQueryService.conversationExists(memoryId)) {
@@ -145,6 +154,15 @@ public class ChatService {
                             .toList();
 
             String userMessageText = MultipartUserMessageBuilder.buildText(text, fileList);
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                userMessageText = "[System Instruction]\n" + systemPrompt.trim() + "\n\n[User Message]\n"
+                        + userMessageText;
+                log.info("📝 System prompt injected ({} chars)", systemPrompt.length());
+            }
+            final String finalUserMessageText = userMessageText;
+            final Double finalTemperature = temperature;
+            final Integer finalMaxTokens = maxTokens;
+            final Double finalTopP = topP;
             final String finalResolvedModelName = resolvedModelName;
             final AutoRouteResult finalRouteResult = routeResult;
             final ClassificationResult finalClassificationResult = classificationResult;
@@ -154,7 +172,7 @@ public class ChatService {
                     log.info("🚀 Starting TokenStream for memoryId: {}", memoryId);
 
                     if (persistenceService != null) {
-                        persistenceService.saveUserMessage(memoryId, userMessageText);
+                        persistenceService.saveUserMessage(memoryId, finalUserMessageText);
                     }
 
                     sendRoutingInfo(emitter, finalResolvedModelName, finalRouteResult, connectionClosed);
@@ -162,19 +180,35 @@ public class ChatService {
                     AiCodeHelperService selectedService = aiServiceFactory.getService(deepThink, webSearch,
                             finalResolvedModelName, knowledgeBase, selectedTools);
                     log.info(
-                            "🤖 AI service config: deepThink={}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, autoRoute={}",
+                            "🤖 AI service config: deepThink={}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, autoRoute={}, llmParams={}/{}/{}",
                             deepThink, webSearch, finalResolvedModelName, knowledgeBase, selectedTools,
-                            finalRouteResult != null && finalRouteResult.isAutoRouted());
+                            finalRouteResult != null && finalRouteResult.isAutoRouted(),
+                            finalTemperature, finalMaxTokens, finalTopP);
 
                     if (finalRouteResult != null) {
                         statsService.recordRouting(finalRouteResult, finalClassificationResult);
                     }
 
-                    dev.langchain4j.service.TokenStream tokenStream = selectedService.chatWithStream(memoryId,
-                            userMessageText);
+                    boolean hasCustomLlmParams = finalTemperature != null || finalMaxTokens != null
+                            || finalTopP != null;
+                    dev.langchain4j.service.TokenStream tokenStream;
+                    if (hasCustomLlmParams) {
+                        var paramModel = aiServiceFactory.createParameterizedModel(
+                                finalResolvedModelName, deepThink, finalTemperature, finalMaxTokens, finalTopP);
+                        var chatMemory = dev.langchain4j.memory.chat.MessageWindowChatMemory.withMaxMessages(10);
+                        tokenStream = dev.langchain4j.service.AiServices.builder(AiCodeHelperService.class)
+                                .streamingChatModel(paramModel)
+                                .chatMemoryProvider(mid -> chatMemory)
+                                .build()
+                                .chatWithStream(memoryId, finalUserMessageText);
+                        log.info("🎛️ Using parameterized LLM model: temperature={}, maxTokens={}, topP={}",
+                                finalTemperature, finalMaxTokens, finalTopP);
+                    } else {
+                        tokenStream = selectedService.chatWithStream(memoryId, finalUserMessageText);
+                    }
 
                     subscribeTokenStream(tokenStream, emitter, connectionClosed,
-                            knowledgeBase ? text : null, memoryId, userMessageText, finalResolvedModelName);
+                            knowledgeBase ? text : null, memoryId, finalUserMessageText, finalResolvedModelName);
 
                 } catch (Exception e) {
                     log.error("❌ Error in streaming chat", e);

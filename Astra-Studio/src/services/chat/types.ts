@@ -16,4 +16,8 @@ export interface SendChatMessageOptions {
   knowledgeBase?: boolean
   selectedTools?: string[]
   model?: string
+  temperature?: number
+  maxTokens?: number
+  topP?: number
+  systemPrompt?: string
 }

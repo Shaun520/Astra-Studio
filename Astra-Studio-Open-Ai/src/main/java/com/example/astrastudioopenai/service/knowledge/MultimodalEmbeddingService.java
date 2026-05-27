@@ -147,6 +147,10 @@ public class MultimodalEmbeddingService {
         return enabled;
     }
 
+    public int getDimensions() {
+        return dimensions;
+    }
+
     public float[] embedImageByUrl(String imageUrl) throws Exception {
         if (!enabled) {
             throw new IllegalStateException("Multimodal embedding is disabled");

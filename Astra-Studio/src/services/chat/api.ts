@@ -65,6 +65,10 @@ export async function sendChatMessage(
     options.selectedTools.forEach(tool => formData.append('selectedTools', tool))
   }
   formData.append('model', options.model || 'auto')
+  if (options.temperature != null) formData.append('temperature', String(options.temperature))
+  if (options.maxTokens != null) formData.append('maxTokens', String(options.maxTokens))
+  if (options.topP != null) formData.append('topP', String(options.topP))
+  if (options.systemPrompt?.trim()) formData.append('systemPrompt', options.systemPrompt.trim())
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {

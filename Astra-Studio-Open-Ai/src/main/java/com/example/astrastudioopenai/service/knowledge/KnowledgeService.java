@@ -7,6 +7,8 @@ import com.example.astrastudioopenai.dto.response.DocumentPageResponse;
 import com.example.astrastudioopenai.dto.response.RetrievedChunk;
 import com.example.astrastudioopenai.entity.KnowledgeDocumentEntity;
 import com.example.astrastudioopenai.repository.KnowledgeDocumentRepository;
+import dev.langchain4j.model.embedding.EmbeddingModel;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +32,12 @@ public class KnowledgeService {
 
     @Autowired(required = false)
     private KnowledgeDocumentRepository documentRepository;
+
+    @Autowired(required = false)
+    private EmbeddingModel textEmbeddingModel;
+
+    @Autowired(required = false)
+    private MultimodalEmbeddingService multimodalEmbeddingService;
 
     @Value("${knowledge-base.multimodal-embedding.enabled:true}")
     private boolean multimodalEmbeddingEnabled;
@@ -143,8 +151,57 @@ public class KnowledgeService {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    public ResponseEntity<Map<String, Object>> getDocumentPreview(Long id) {
+        if (documentRepository == null) {
+            return ResponseEntity.status(503).build();
+        }
+        return documentRepository.findById(id)
+                .map(doc -> {
+                    if (!"image".equals(doc.getContentType())) {
+                        return ResponseEntity.status(404).<Map<String, Object>>body(Map.of(
+                                "error", "仅支持图片类型文档预览",
+                                "contentType", doc.getContentType()));
+                    }
+                    if (doc.getFileUrl() == null || doc.getFileUrl().isBlank()) {
+                        return ResponseEntity.status(404).<Map<String, Object>>body(Map.of(
+                                "error", "图片预览URL不可用"));
+                    }
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "documentId", doc.getId(),
+                            "fileName", doc.getFilename(),
+                            "contentType", doc.getContentType(),
+                            "previewUrl", doc.getFileUrl(),
+                            "status", doc.getStatus()));
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     public boolean isAvailable() {
         return documentETLPipeline != null && ragRetrievalService != null;
+    }
+
+    @PostConstruct
+    public void validateVectorDimensionConsistency() {
+        if (!multimodalEmbeddingEnabled || multimodalEmbeddingService == null) {
+            log.info("向量维度校验跳过: 多模态 Embedding 未启用");
+            return;
+        }
+        try {
+            if (textEmbeddingModel == null) {
+                log.warn("向量维度校验跳过: 文本 EmbeddingModel 不可用");
+                return;
+            }
+            int textDim = textEmbeddingModel.embed("dimension_check").content().vector().length;
+            int multimodalDim = multimodalEmbeddingService.getDimensions();
+            if (textDim != multimodalDim) {
+                log.error("向量维度不一致! 文本Embedding={}维, 多模态Embedding={}维, 图片上传功能已禁用", textDim, multimodalDim);
+                multimodalEmbeddingEnabled = false;
+            } else {
+                log.info("向量维度校验通过: 统一 {} 维 (文本 + 多模态)", textDim);
+            }
+        } catch (Exception e) {
+            log.warn("向量维度校验失败: {}, 跳过校验（不影响系统运行）", e.getMessage());
+        }
     }
 
     private boolean isImageFile(String fileName) {
@@ -153,6 +210,6 @@ public class KnowledgeService {
         }
         String lowerName = fileName.toLowerCase();
         return lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") ||
-               lowerName.endsWith(".png") || lowerName.endsWith(".webp");
+                lowerName.endsWith(".png") || lowerName.endsWith(".webp");
     }
 }

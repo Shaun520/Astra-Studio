@@ -6,6 +6,7 @@ import { formatFileSize, getFileTypeLabel } from '../../utils/file'
 
 const openImagePreview = inject<(images: { src: string; alt?: string }[], index?: number) => void>('openImagePreview')!
 const selectedModel = inject<Ref<string>>('selectedModel')!
+const chatParams = inject<{ temperature: number; maxOutput: number; topP: number; systemPrompt: string }>('chatParams')
 
 const inputText = ref('')
 const deepThink = ref(false)

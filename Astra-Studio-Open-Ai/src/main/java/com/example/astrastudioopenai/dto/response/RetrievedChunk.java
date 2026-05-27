@@ -14,6 +14,8 @@ public class RetrievedChunk {
     private double score;
     private Integer pageNumber;
     private String content;
+    private String sourceType;
+    private String metadata;
 
     public static Content toTextContent(RetrievedChunk chunk) {
         StringBuilder sb = new StringBuilder();

@@ -148,8 +148,12 @@ public class RAGRetrievalService {
                     RetrievedChunk rc = new RetrievedChunk();
                     rc.setChunkId((long) entity.getChunkIndex());
                     rc.setContentSnippet(truncateContent(entity.getContent()));
-                    rc.setDocumentName(entity.getDocument() != null ? entity.getDocument().getFilename() : "unknown");
+                    String docName = entity.getDocument() != null ? entity.getDocument().getFilename() : "unknown";
+                    rc.setDocumentName(docName);
                     rc.setContent(entity.getContent());
+                    boolean isImage = FileTypes.isImageFile(docName);
+                    rc.setSourceType(isImage ? "image" : "text");
+                    rc.setMetadata(entity.getMetadataJson());
                     return rc;
                 })
                 .collect(Collectors.toList());

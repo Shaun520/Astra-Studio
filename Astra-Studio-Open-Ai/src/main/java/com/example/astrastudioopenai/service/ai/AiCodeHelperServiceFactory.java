@@ -148,6 +148,22 @@ public class AiCodeHelperServiceFactory {
                 .build();
     }
 
+    public OpenAiStreamingChatModel createParameterizedModel(String modelName, boolean deepThink,
+            Double temperature, Integer maxTokens, Double topP) {
+        var builder = OpenAiStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .returnThinking(deepThink)
+                .timeout(Duration.ofSeconds(300))
+                .logRequests(true)
+                .logResponses(true);
+        if (temperature != null) builder.temperature(temperature);
+        if (maxTokens != null) builder.maxTokens(maxTokens);
+        if (topP != null) builder.topP(topP);
+        return builder.build();
+    }
+
     @Bean
     public AiCodeHelperService defaultAiService() {
         return getService(false, false, defaultModelName);

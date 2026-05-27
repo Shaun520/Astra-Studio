@@ -42,6 +42,11 @@ public class KnowledgeController {
         return knowledgeService.getDocumentStatus(id);
     }
 
+    @GetMapping("/documents/{id}/preview")
+    public ResponseEntity<Map<String, Object>> getDocumentPreview(@PathVariable("id") Long id) {
+        return knowledgeService.getDocumentPreview(id);
+    }
+
     @DeleteMapping("/documents/{id}")
     public ResponseEntity<Void> deleteDocument(@PathVariable("id") Long id) {
         return knowledgeService.deleteDocument(id);
