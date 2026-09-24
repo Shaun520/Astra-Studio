@@ -90,7 +90,7 @@ public class ChatService {
             boolean knowledgeBase, List<String> selectedTools,
             Double temperature, Integer maxTokens, Double topP, String systemPrompt) {
         log.info(
-                "memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, llmParams={}/{}/{}/{}",
+                "memoryId: {}, text: {}, files: {}, deepThink: {}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, llmParams={}/{}/{}",
                 memoryId, text, files, deepThink, webSearch, modelName, knowledgeBase, selectedTools,
                 temperature, maxTokens, topP, systemPrompt != null ? systemPrompt.length() + "chars" : "null");
 
@@ -130,6 +130,16 @@ public class ChatService {
                     + ". Allowed models: glm-5.1, deepseek-v4-flash, qwen3.6-flash-2026-04-16, qwen3.7-max-2026-05-17, auto");
         }
 
+        List<String> fileList = files == null ? Collections.emptyList()
+                : files.stream().filter(url -> url != null && !url.isBlank()).map(String::trim).toList();
+        String userMessageText = MultipartUserMessageBuilder.buildText(text, fileList);
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            userMessageText = "[System Instruction]\n" + systemPrompt.trim() + "\n\n[User Message]\n"
+                    + userMessageText;
+        }
+
+        final String finalUserMessageText = userMessageText;
+
         SseEmitter emitter = new SseEmitter(sseTimeoutMs);
         final boolean[] connectionClosed = { false };
         final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -147,19 +157,6 @@ public class ChatService {
                 }
             }, 15, 15, TimeUnit.SECONDS);
 
-            List<String> fileList = files == null ? Collections.emptyList()
-                    : files.stream()
-                            .filter(url -> url != null && !url.isBlank())
-                            .map(String::trim)
-                            .toList();
-
-            String userMessageText = MultipartUserMessageBuilder.buildText(text, fileList);
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                userMessageText = "[System Instruction]\n" + systemPrompt.trim() + "\n\n[User Message]\n"
-                        + userMessageText;
-                log.info("📝 System prompt injected ({} chars)", systemPrompt.length());
-            }
-            final String finalUserMessageText = userMessageText;
             final Double finalTemperature = temperature;
             final Integer finalMaxTokens = maxTokens;
             final Double finalTopP = topP;

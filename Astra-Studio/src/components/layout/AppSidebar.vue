@@ -2,7 +2,7 @@
 /* 布局组件 - 左侧边栏 */
 import { ref, computed, inject, onMounted,type Ref  } from 'vue'
 import {
-  MessageSquare, Image, Video, Code2, Languages,
+  MessageSquare, Image, Video,
   Clock, Bookmark, Folder, ChevronsUpDown, Settings,
   Sparkles, ChevronDown, ChevronRight, Plus
 } from 'lucide-vue-next'
@@ -46,8 +46,6 @@ const emit = defineEmits<{
 const toolItems = [
   { icon: Image, label: '图像生成' },
   { icon: Video, label: '视频生成', badge: 'BETA' },
-  { icon: Code2, label: '代码助手' },
-  { icon: Languages, label: '翻译润色' },
 ]
 
 const libraryItems = [
