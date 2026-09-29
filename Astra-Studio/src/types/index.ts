@@ -69,10 +69,10 @@ export interface ThemeConfig {
 }
 
 export interface KnowledgeSource {
-  chunk_id: number | null
-  content_snippet: string
-  document_name: string
-  page_number: number | null
+  chunkId: number | null
+  contentSnippet: string
+  documentName: string
+  pageNumber: number | null
   score: number
   sourceType?: 'text' | 'image'
   metadata?: string

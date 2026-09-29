@@ -175,7 +175,8 @@ public class ChatService {
                     sendRoutingInfo(emitter, finalResolvedModelName, finalRouteResult, connectionClosed);
 
                     AiCodeHelperService selectedService = aiServiceFactory.getService(deepThink, webSearch,
-                            finalResolvedModelName, knowledgeBase, selectedTools);
+                            finalResolvedModelName, knowledgeBase, selectedTools,
+                            finalTemperature, finalMaxTokens, finalTopP);
                     log.info(
                             "🤖 AI service config: deepThink={}, webSearch={}, model={}, knowledgeBase={}, selectedTools={}, autoRoute={}, llmParams={}/{}/{}",
                             deepThink, webSearch, finalResolvedModelName, knowledgeBase, selectedTools,
@@ -186,23 +187,8 @@ public class ChatService {
                         statsService.recordRouting(finalRouteResult, finalClassificationResult);
                     }
 
-                    boolean hasCustomLlmParams = finalTemperature != null || finalMaxTokens != null
-                            || finalTopP != null;
-                    dev.langchain4j.service.TokenStream tokenStream;
-                    if (hasCustomLlmParams) {
-                        var paramModel = aiServiceFactory.createParameterizedModel(
-                                finalResolvedModelName, deepThink, finalTemperature, finalMaxTokens, finalTopP);
-                        var chatMemory = dev.langchain4j.memory.chat.MessageWindowChatMemory.withMaxMessages(10);
-                        tokenStream = dev.langchain4j.service.AiServices.builder(AiCodeHelperService.class)
-                                .streamingChatModel(paramModel)
-                                .chatMemoryProvider(mid -> chatMemory)
-                                .build()
-                                .chatWithStream(memoryId, finalUserMessageText);
-                        log.info("🎛️ Using parameterized LLM model: temperature={}, maxTokens={}, topP={}",
-                                finalTemperature, finalMaxTokens, finalTopP);
-                    } else {
-                        tokenStream = selectedService.chatWithStream(memoryId, finalUserMessageText);
-                    }
+                    dev.langchain4j.service.TokenStream tokenStream = selectedService.chatWithStream(memoryId,
+                            finalUserMessageText);
 
                     subscribeTokenStream(tokenStream, emitter, connectionClosed,
                             knowledgeBase ? text : null, memoryId, finalUserMessageText, finalResolvedModelName);
