@@ -76,6 +76,12 @@ public class AiCodeHelperServiceFactory {
 
     public AiCodeHelperService getService(boolean deepThink, boolean webSearch, String modelName,
             boolean knowledgeBase, List<String> selectedToolNames) {
+        return getService(deepThink, webSearch, modelName, knowledgeBase, selectedToolNames, null, null, null);
+    }
+
+    public AiCodeHelperService getService(boolean deepThink, boolean webSearch, String modelName,
+            boolean knowledgeBase, List<String> selectedToolNames,
+            Double temperature, Integer maxTokens, Double topP) {
         if (!ALLOWED_MODELS.contains(modelName)) {
             throw new IllegalArgumentException(
                     "Unsupported model: " + modelName + ". Allowed models: " + ALLOWED_MODELS);
@@ -84,19 +90,23 @@ public class AiCodeHelperServiceFactory {
         String toolsKey = (selectedToolNames != null && !selectedToolNames.isEmpty())
                 ? selectedToolNames.stream().sorted().collect(java.util.stream.Collectors.joining(","))
                 : "none";
-        String cacheKey = String.format("deepThink:%s,webSearch:%s,model:%s,rag:%s,tools:[%s]",
-                deepThink, webSearch, modelName, knowledgeBase, toolsKey);
+        String llmKey = temperature + "/" + maxTokens + "/" + topP;
+        String cacheKey = String.format("deepThink:%s,webSearch:%s,model:%s,rag:%s,tools:[%s],llm:%s",
+                deepThink, webSearch, modelName, knowledgeBase, toolsKey, llmKey);
 
         return serviceCache.computeIfAbsent(cacheKey, key -> {
             log.info("🏭 Creating new AI service with config: {}", key);
-            return buildService(deepThink, webSearch, modelName, knowledgeBase, selectedToolNames);
+            return buildService(deepThink, webSearch, modelName, knowledgeBase, selectedToolNames,
+                    temperature, maxTokens, topP);
         });
     }
 
     private AiCodeHelperService buildService(boolean deepThink, boolean webSearch, String modelName,
-            boolean knowledgeBase, List<String> selectedToolNames) {
+            boolean knowledgeBase, List<String> selectedToolNames,
+            Double temperature, Integer maxTokens, Double topP) {
         int timeoutSeconds = calculateTimeout(deepThink, webSearch, knowledgeBase, selectedToolNames);
-        OpenAiStreamingChatModel streamingModel = createModel(deepThink, timeoutSeconds, modelName);
+        OpenAiStreamingChatModel streamingModel = createModel(deepThink, timeoutSeconds, modelName,
+                temperature, maxTokens, topP);
 
         var builder = AiServices.builder(AiCodeHelperService.class)
                 .chatModel(openAiChatModel)
@@ -136,26 +146,14 @@ public class AiCodeHelperServiceFactory {
         return baseTimeout;
     }
 
-    private OpenAiStreamingChatModel createModel(boolean deepThink, int timeoutSeconds, String modelName) {
-        return OpenAiStreamingChatModel.builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .modelName(modelName)
-                .returnThinking(deepThink)
-                .timeout(Duration.ofSeconds(timeoutSeconds))
-                .logRequests(true)
-                .logResponses(true)
-                .build();
-    }
-
-    public OpenAiStreamingChatModel createParameterizedModel(String modelName, boolean deepThink,
+    private OpenAiStreamingChatModel createModel(boolean deepThink, int timeoutSeconds, String modelName,
             Double temperature, Integer maxTokens, Double topP) {
         var builder = OpenAiStreamingChatModel.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .modelName(modelName)
                 .returnThinking(deepThink)
-                .timeout(Duration.ofSeconds(300))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .logRequests(true)
                 .logResponses(true);
         if (temperature != null) builder.temperature(temperature);

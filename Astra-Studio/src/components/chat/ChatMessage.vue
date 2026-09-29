@@ -29,10 +29,10 @@ interface Props {
     fileType?: string
   }>
   sources?: Array<{
-    chunk_id: number | null
-    content_snippet: string
-    document_name: string
-    page_number: number | null
+    chunkId: number | null
+    contentSnippet: string
+    documentName: string
+    pageNumber: number | null
     score: number
     sourceType?: 'text' | 'image'
     metadata?: string
@@ -488,13 +488,13 @@ async function handleCopyClick(e: Event) {
               <div class="source-meta flex items-center gap-2 mb-1">
                 <component :is="src.sourceType === 'image' ? ImageIcon : Library"
                   :class="src.sourceType === 'image' ? 'w-[13px] h-[13px] text-blue-400' : 'w-[13px] h-[13px] text-text-2'" />
-                <span class="source-doc font-medium text-text" :title="src.document_name">{{ src.document_name || '未知文档' }}</span>
-                <span v-if="src.page_number" class="source-page text-text-4">P{{ src.page_number }}</span>
+                <span class="source-doc font-medium text-text" :title="src.documentName">{{ src.documentName || '未知文档' }}</span>
+                <span v-if="src.pageNumber" class="source-page text-text-4">P{{ src.pageNumber }}</span>
                 <span v-if="src.score" class="source-score ml-auto tabular-nums font-mono"
                   :class="src.sourceType === 'image' ? 'text-blue-400/70' : 'text-accent/70'">{{ (src.score * 100).toFixed(0) }}%</span>
               </div>
               <p class="source-snippet line-clamp-2"
-                :class="src.sourceType === 'image' ? 'text-text-2' : 'text-text-3'">{{ src.content_snippet }}</p>
+                :class="src.sourceType === 'image' ? 'text-text-2' : 'text-text-3'">{{ src.contentSnippet }}</p>
             </div>
           </div>
         </div>

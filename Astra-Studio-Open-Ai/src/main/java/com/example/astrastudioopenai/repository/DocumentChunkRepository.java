@@ -21,8 +21,21 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunkEnti
     @Query(value = "SELECT * FROM document_chunks WHERE (:docId IS NULL OR document_id = :docId) AND (embedding <=> CAST(:queryVec AS vector)) <= :maxDist ORDER BY embedding <=> CAST(:queryVec AS vector) LIMIT :topK", nativeQuery = true)
     List<DocumentChunkEntity> findSimilarChunks(@Param("docId") Long docId, @Param("queryVec") String queryVec, @Param("maxDist") double maxDist, @Param("topK") int topK);
 
-    @Query(value = "SELECT dc.* FROM document_chunks dc JOIN knowledge_documents kd ON dc.document_id = kd.id WHERE kd.content_type = :contentType AND (dc.embedding <=> CAST(:queryVec AS vector)) <= :maxDist ORDER BY dc.embedding <=> CAST(:queryVec AS vector) LIMIT :topK", nativeQuery = true)
-    List<DocumentChunkEntity> findSimilarChunksByContentType(@Param("contentType") String contentType, @Param("queryVec") String queryVec, @Param("maxDist") double maxDist, @Param("topK") int topK);
+    /**
+     * 返回列：[0]=id, [1]=content, [2]=metadata(text), [3]=filename, [4]=余弦距离
+     */
+    @Query(value = """
+            SELECT dc.id, dc.content, dc.metadata::text, kd.filename,
+                   (dc.embedding <=> CAST(:queryVec AS vector)) AS distance
+            FROM document_chunks dc
+            JOIN knowledge_documents kd ON dc.document_id = kd.id
+            WHERE kd.content_type = :contentType
+              AND (dc.embedding <=> CAST(:queryVec AS vector)) <= :maxDist
+            ORDER BY dc.embedding <=> CAST(:queryVec AS vector)
+            LIMIT :topK
+            """, nativeQuery = true)
+    List<Object[]> findSimilarChunksByContentType(@Param("contentType") String contentType,
+            @Param("queryVec") String queryVec, @Param("maxDist") double maxDist, @Param("topK") int topK);
 
     @Query(value = "SELECT count(*) FROM document_chunks WHERE embedding IS NULL", nativeQuery = true)
     long countNullEmbeddings();
